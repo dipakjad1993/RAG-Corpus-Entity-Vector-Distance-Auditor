@@ -61,6 +61,7 @@ guidelines, and the project's About + tags.**
 10. [Outputs — every file explained](#outputs--every-file-explained)
 11. [Schema — the report.json contract](#schema--the-reportjson-contract)
 12. [Real worked example — a live The Guardian audit](#real-worked-example--a-live-the-guardian-audit)
+12. [Live screenshots — real output from the The Guardian audit](#live-screenshots--real-output-from-the-the-guardian-audit)
 13. [DuckDB — the local vector database](#duckdb--the-local-vector-database)
 14. [Recurring / scheduled audits & drift history](#recurring--scheduled-audits--drift-history)
 15. [Configuration reference — full YAML](#configuration-reference--full-yaml)
@@ -678,6 +679,88 @@ this topic despite the highest raw support-mention count (159) — exactly the
 > layer reports the run's confidence honestly (here `verified: false` / 72 due
 > to partial support-fraction — the tool always shows its true confidence rather
 > than dressing it up).
+
+---
+
+## Live screenshots — real output from the The Guardian audit
+
+> These are **actual rendered screenshots** of the self-contained `dashboard.html`
+> produced by the real The Guardian run above (job
+> `web_output/jobs/20260830-094637-26b22b`). They are full-color captures of the
+> live report — real tables, real scores, real source URLs — **not** mockups or
+> dummy data.
+
+### Full-page dashboard (scroll view)
+
+![RAG-EVDA full dashboard — The Guardian audit](assets/dashboard_full.png)
+
+### Brand health issues
+
+![Brand health issues — real audit](assets/brand_health.png)
+
+### Semantic vector proximity matrix (topic × entity)
+
+![Semantic vector proximity matrix — real audit](assets/proximity_matrix.png)
+
+### Per-topic RAG invisibility & share of voice
+
+![Per-topic RAG invisibility & share of voice — real audit](assets/invisibility_sov.png)
+
+### Entity link vs. mention audit
+
+![Entity link vs. mention audit — real audit](assets/citation_gap.png)
+
+### High-density off-page target list (real URLs to pitch)
+
+![High-density off-page target list — real audit](assets/offpage_targets.png)
+
+### Prioritized recommendations (real, data-driven)
+
+![Prioritized recommendations — real audit](assets/recommendations.png)
+
+### Real-time source freshness & liveness
+
+![Real-time source freshness & liveness — real audit](assets/freshness.png)
+
+### Vector Share of Voice — topic × AI-engine matrix
+
+![Vector Share of Voice topic × AI-engine matrix — real audit](assets/engine_sov.png)
+
+### Automated token-density adjuster (real BPE counts)
+
+![Automated token-density adjuster — real audit](assets/token_density.png)
+
+### RAG chunk hallucination & sentiment auditor (real RoBERTa)
+
+![RAG chunk hallucination & sentiment auditor — real audit](assets/sentiment.png)
+
+### Verbatim negative-framed brand windows
+
+![Verbatim negative-framed brand windows — real audit](assets/risk_windows.png)
+
+### Vector poisoning / negative-SEO detection
+
+![Vector poisoning / negative-SEO detection — real audit](assets/poisoning.png)
+
+### Semantic drift tracking (time-series deltas & trends)
+
+![Semantic drift tracking — real audit](assets/drift.png)
+
+### Synthetic query generator (reverse-engineered RAG prompts)
+
+![Synthetic query generator — real audit](assets/synthetic_queries.png)
+
+### RAG chunking & contextual-window simulator
+
+![RAG chunking & contextual-window simulator — real audit](assets/chunking.png)
+
+### Data provenance — harvested real sources
+
+![Data provenance — harvested sources — real audit](assets/provenance.png)
+
+All screenshots live under [`assets/`](assets/). Every run the web UI / CLI
+completes produces the same class of visual report via its self-contained
+`dashboard.html`.
 
 ---
 
