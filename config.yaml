@@ -1,0 +1,45 @@
+# =====================================================================
+# RAG-EVDA — INPUTS  (Section 2 of the brief)
+# Fill in the five fields below, then run:
+#     python -m ragevda.cli run -c config.yaml
+# (or just run `python -m ragevda.cli interactive` and type them in.)
+# =====================================================================
+
+# 1) TARGET BRAND NAME
+#    The precise name of your brand / site.
+target_brand: "Acme Software"
+
+# 2) TARGET INDUSTRY TOPICS / CONCEPTS
+#    Any number of high-value contextual topics or seed keywords (no limit).
+industry_topics:
+  - "enterprise churn prediction"
+  - "SaaS pipeline analytics"
+  - "CRM automation"
+
+# 3) COMPETITOR ENTITIES
+#    Any number of direct competitor brand names (no limit).
+competitor_entities:
+  - "Salesforce"
+  - "HubSpot"
+  - "Zendesk"
+
+# 4) CRAWL DEPTH PARAMETER
+#    How many search results / web pages to scrape per query (1-200).
+crawl_depth: 50
+
+# 5) TARGET LOCALITY / GEOGRAPHIC TARGET (OPTIONAL)
+#    Region / country code to localize search (e.g. "US", "UK", "Detroit").
+#    Leave as null for global.
+locality: null
+
+# ---------------------------------------------------------------------
+# Engine settings (normally you can leave these alone)
+# ---------------------------------------------------------------------
+harvester: "duckduckgo"          # duckduckgo | searxng | file
+searxng_base_url: null
+corpus_dir: null
+include_reddit: true
+include_news: true
+embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+spacy_model: "en_core_web_sm"
+output_dir: "./web_output"

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Build / tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# RAG-EVDA runtime data (generated per-run, not source)
+ragevda_output/
+web_output/
+sample_corpus/
+
+# Local logs
+_web*.log
+_web*.err
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

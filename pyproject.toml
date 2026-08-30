@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ragevda"
+version = "1.0.0"
+description = "RAG Corpus Entity & Vector Distance Auditor - zero-cost local vector intelligence for AI-search visibility."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "RAG-EVDA" }]
+keywords = ["rag", "seo", "embeddings", "vector", "ner", "semantic", "audit"]
+
+dependencies = [
+    "sentence-transformers>=2.3.0",
+    "torch>=2.1.0",
+    "spacy>=3.7.0",
+    "scikit-learn>=1.3.0",
+    "numpy>=1.24.0",
+    "networkx>=3.1.0",
+    "duckdb>=0.10.0",
+    "trafilatura>=1.6.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.0.0",
+    "httpx>=0.27.0",
+    "regex>=2023.0.0",
+    "pyyaml>=6.0.0",
+    "pandas>=2.0.0",
+    "ddgs>=4.0.0",
+]
+
+[project.scripts]
+ragevda = "ragevda.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ragevda*"]

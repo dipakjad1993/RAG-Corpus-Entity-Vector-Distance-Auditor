@@ -1,0 +1,24 @@
+# Core NLP / ML (local, free)
+sentence-transformers>=2.3.0
+torch>=2.1.0
+spacy>=3.7.0
+scikit-learn>=1.3.0
+numpy>=1.24.0
+
+# Graph + storage
+networkx>=3.1.0
+duckdb>=0.10.0
+
+# Harvesting / parsing
+trafilatura>=1.6.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+httpx>=0.27.0
+regex>=2023.0.0
+
+# Config / misc
+pyyaml>=6.0.0
+pandas>=2.0.0
+
+# Zero-cost search clients (optional but recommended)
+ddgs>=4.0.0
