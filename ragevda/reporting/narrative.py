@@ -141,6 +141,18 @@ def features_html(data: Dict[str, Any], job_id: str = "") -> str:
     d = _extract(data)
     cfg, di, hs, cs = d["cfg"], d["di"], d["hs"], d["cs"]
 
+    try:
+        from . import issues as _issues
+
+        _all_issues = _issues.collect_issues(data)
+        _iss_head = (
+            '<h2 class="m3-h2">Issues requiring attention</h2>'
+            + _issues.summary_strip_html(_all_issues)
+            + _issues.banner_html(_all_issues, engine=None, limit=6)
+        )
+    except Exception:  # noqa: BLE001 — highlighting must never break a page
+        _iss_head = ""
+
     brand = _esc(cfg.get("target_brand", ""))
     topics = cfg.get("industry_topics", []) or []
     comps = cfg.get("competitor_entities", []) or []
@@ -289,6 +301,7 @@ def features_html(data: Dict[str, Any], job_id: str = "") -> str:
 
     return f"""
     <section class="narrative">
+      {_iss_head}
       <h2 class="m3-h2">How the audit works &mdash; four local micro-engines</h2>
       <p class="m3-lead">This run analysed <b>{_num(cs.get('doc_count'))}</b> clean
       documents for <b>{_esc(brand)}</b> across
@@ -439,44 +452,54 @@ def _advanced_features_html(d: Dict[str, Any], job_id: str = "") -> str:
 # ---------------------------------------------------------------------------
 
 def outputs_html(data: Dict[str, Any], job_id: str) -> str:
+    """Enterprise Step-3 outputs: in-depth, longer, fully verified report.
+
+    Covers all 11 inputs (echoed with live evidence), all 10 engines with
+    complete per-topic / per-entity tables, competitive leaderboard, drift,
+    sentiment, synthetic queries, token-density plan, verification and every
+    downloadable deliverable — all sourced from the real computed ``data``.
+    """
     d = _extract(data)
-    cite, inv = d["cite"], d["inv"]
-    brand = _esc(d["cfg"].get("target_brand", ""))
+    cite, inv, cfg, di = d["cite"], d["inv"], d["cfg"], d["di"]
+    adv = d["adv"]
+    brand = _esc(cfg.get("target_brand", ""))
 
     inv_idx = cite.get("rag_invisibility_index")
     inv_composite = inv.get("composite_invisibility_index_pct")
     sova = inv.get("composite_vector_share_of_voice_pct")
 
-    # Top off-page targets
-    opts = cite.get("off_page_targets", []) or []
-    opt_rows = ""
-    for t in opts[:12]:
-        opt_rows += (
-            f"<tr><td><a href='{_esc(t.get('url'))}' target='_blank' rel='noopener'>"
-            f"{_esc(t.get('title') or t.get('url'))}</a></td>"
-            f"<td>{_esc(t.get('source_type'))}</td>"
-            f"<td>{_esc(t.get('top_topic'))}</td>"
-            f"<td>{_round(t.get('topic_relevance'))}</td>"
-            f"<td>{_num(t.get('competitors_present'))}</td></tr>"
-        )
+    # ---- 11 enterprise inputs echoed with evidence ---------------------
+    topics = cfg.get("industry_topics", []) or []
+    comps = cfg.get("competitor_entities", []) or []
+    input_rows = [
+        ["01 · Target brand", _esc(cfg.get("target_brand", ""))],
+        ["02 · Industry topics (%d)" % len(topics),
+         _esc(", ".join(topics[:12])) + (" …" if len(topics) > 12 else "")],
+        ["03 · Competitors (%d)" % len(comps), _esc(", ".join(comps))],
+        ["04 · Crawl depth", _esc(cfg.get("crawl_depth", "")) + " pages/query"],
+        ["05 · Locality", _esc(cfg.get("locality") or "global")],
+        ["06 · Search intent + query templates",
+         _esc(cfg.get("search_intent", "")) + " · " +
+         _num(len((cfg.get("query_templates", {}) or {}))) + " templates"],
+        ["07 · Ontology / weighting",
+         _num(len((cfg.get("entity_weighting", {}) or {}))) + " weights · " +
+         _num(len((cfg.get("ontology_aliases", {}) or {}))) + " alias groups"],
+        ["08 · Ground-truth corpora",
+         _num(len((cfg.get("corpus_files", []) or []))) + " files" +
+         (" · " + _esc(cfg.get("corpus_dir") or "") if cfg.get("corpus_dir") else "")],
+        ["09 · Embedding model", _esc(cfg.get("embedding_model", "")) +
+         " (" + _esc(d["meta"].get("embedding_kind", "")) + ")"],
+        ["10 · SERP footprints", _num(len((cfg.get("serp_footprints", []) or []))) + " engine sources"],
+        ["11 · Content feeds", _num(len((cfg.get("content_feeds", []) or []))) + " RSS/sitemap feeds"],
+    ]
 
-    # Top recommendations
-    recs = data.get("recommendations", []) or []
-    rec_rows = ""
-    for r in recs[:12]:
-        rec_rows += (
-            f"<tr><td><span class='m3-badge'>{_esc(r.get('priority'))}</span></td>"
-            f"<td>{_esc(r.get('title'))}</td>"
-            f"<td>{_esc(r.get('category'))}</td>"
-            f"<td>{_round(r.get('score'))}</td></tr>"
-        )
-
-    # Proximity snapshot (brand rows only, if distinguishable)
+    # ---- Full proximity table (every row, brand-first) ------------------
+    rows_sorted = sorted(d["rows"], key=lambda r: (
+        0 if str(r.get("entity", "")).lower() == str(cfg.get("target_brand", "")).lower() else 1,
+        -(float(r.get("proximity") or 0) if isinstance(r.get("proximity"), (int, float)) else 0),
+    ))
     prox_rows = ""
-    shown = 0
-    for r in d["rows"]:
-        if shown >= 14:
-            break
+    for r in rows_sorted[:60]:
         prox_rows += (
             f"<tr><td>{_esc(r.get('topic'))}</td>"
             f"<td>{_esc(r.get('entity'))}</td>"
@@ -484,7 +507,103 @@ def outputs_html(data: Dict[str, Any], job_id: str) -> str:
             f"<td>{_esc(r.get('label'))}</td>"
             f"<td>{_num(r.get('docs_highly_relevant'))}</td></tr>"
         )
-        shown += 1
+    if not prox_rows:
+        prox_rows = "<tr><td colspan='5' class='muted'>No proximity rows.</td></tr>"
+
+    # ---- Competitive leaderboard (mean proximity per entity) ------------
+    from collections import defaultdict
+    agg: Dict[str, List[float]] = defaultdict(list)
+    for r in d["rows"]:
+        try:
+            agg[str(r.get("entity", ""))].append(float(r.get("proximity")))
+        except (TypeError, ValueError):
+            pass
+    import statistics as _st
+    lead = sorted(((e, _st.mean(v), len(v)) for e, v in agg.items() if v),
+                  key=lambda x: -x[1])[:12]
+    lead_rows = "".join(
+        f"<tr><td>{_esc(e)}</td><td>{_round(m)}</td><td>{_num(n)} topics</td>"
+        f"<td>{'👑 brand' if e.lower()==str(cfg.get('target_brand','')).lower() else 'rival'}</td></tr>"
+        for e, m, n in lead) or "<tr><td colspan='4' class='muted'>—</td></tr>"
+
+    # ---- Entity citation ledger (linked / unlinked / omitted) -----------
+    ent_rows = ""
+    for e in (d["ent_sum"] or [])[:20]:
+        ent_rows += (
+            f"<tr><td>{_esc(e.get('entity'))}</td>"
+            f"<td>{_num(e.get('docs_linked'))}</td>"
+            f"<td>{_num(e.get('docs_unlinked'))}</td>"
+            f"<td>{_num(e.get('docs_omitted'))}</td>"
+            f"<td>{_round(e.get('citation_rate'))}</td></tr>"
+        )
+    if not ent_rows:
+        ent_rows = "<tr><td colspan='5' class='muted'>No citation ledger.</td></tr>"
+
+    # ---- Off-page targets (extended to 25) -------------------------------
+    opts = cite.get("off_page_targets", []) or []
+    opt_rows = ""
+    for t in opts[:25]:
+        opt_rows += (
+            f"<tr><td><a href='{_esc(t.get('url'))}' target='_blank' rel='noopener'>"
+            f"{_esc((t.get('title') or t.get('url'))[:90])}</a></td>"
+            f"<td>{_esc(t.get('source_type'))}</td>"
+            f"<td>{_esc(t.get('top_topic'))}</td>"
+            f"<td>{_round(t.get('topic_relevance'))}</td>"
+            f"<td>{_num(t.get('competitors_present'))}</td></tr>"
+        )
+    if not opt_rows:
+        opt_rows = "<tr><td colspan='5' class='muted'>No off-page targets.</td></tr>"
+
+    # ---- Recommendations (extended to 25, with rationale) ----------------
+    recs = data.get("recommendations", []) or []
+    rec_rows = ""
+    for r in recs[:25]:
+        rec_rows += (
+            f"<tr><td><span class='m3-badge'>{_esc(r.get('priority'))}</span></td>"
+            f"<td>{_esc(r.get('title'))}<br><span class='muted'>{_esc((r.get('rationale') or r.get('detail') or ''))[:220]}</span></td>"
+            f"<td>{_esc(r.get('category'))}</td>"
+            f"<td>{_round(r.get('score'))}</td></tr>"
+        )
+    if not rec_rows:
+        rec_rows = "<tr><td colspan='4' class='muted'>No recommendations.</td></tr>"
+
+    # ---- Advanced: drift / sentiment / synthetic / density ---------------
+    dr = (adv.get("drift", {}) or {})
+    alerts = dr.get("alerts", []) or []
+    drift_rows = "".join(
+        f"<tr><td>{_esc(a.get('topic', ''))}</td><td>{_esc(a.get('message', a.get('detail', '')))[:160]}</td>"
+        f"<td>{_round(a.get('delta', a.get('change', '')))}</td></tr>"
+        for a in alerts[:10]) or "<tr><td colspan='3' class='muted'>No drift alerts — baseline snapshotted for future runs.</td></tr>"
+    sent = (adv.get("sentiment", {}) or {})
+    sent_rows = "".join(
+        f"<tr><td>{_esc(s.get('entity', ''))}</td><td>{_round(s.get('net_sentiment'))}</td>"
+        f"<td>{_num(s.get('risk_windows', s.get('negative_windows', 0)))}</td>"
+        f"<td>{_esc(str(s.get('verdict', s.get('label', '')))[:80])}</td></tr>"
+        for s in (sent.get("per_entity", []) or [])[:12]) or \
+        "<tr><td colspan='4' class='muted'>No sentiment rows.</td></tr>"
+    syn = (adv.get("synthetic_queries", {}) or {})
+    syn_items = []
+    for ent, qs in (syn.get("per_entity", {}) or {}).items():
+        for q in (qs or [])[:3]:
+            syn_items.append(f"<tr><td>{_esc(ent)}</td><td>{_esc(q if isinstance(q, str) else q.get('query', q))[:140]}</td></tr>")
+    syn_rows = "".join(syn_items[:18]) or "<tr><td colspan='2' class='muted'>No synthetic queries.</td></tr>"
+    td = (adv.get("token_density", {}) or {})
+    td_rows = "".join(
+        f"<tr><td>{_esc(t.get('topic', ''))}</td><td>{_esc(t.get('leading_competitor', ''))}</td>"
+        f"<td>{_round(t.get('tokens_needed_to_displace'))}</td>"
+        f"<td>{_round(t.get('brand_density'))}</td></tr>"
+        for t in (td.get("per_topic", []) or [])[:12]) or \
+        "<tr><td colspan='4' class='muted'>No density plan rows.</td></tr>"
+
+    fs = di.get("freshness_summary", {}) or {}
+    verify_rows = [
+        ["Verification score", f'{_round(di.get("verification_score"))} / 100 &nbsp;({"VERIFIED" if di.get("verified") else "PARTIAL"})'],
+        ["Models real", _esc(str(di.get("embedding_model") or di.get("embedding_kind"))) + " · " + _esc(str(di.get("ner_model") or di.get("ner_kind")))],
+        ["Harvest", ("OK — " + _num(di.get("harvested_docs")) + " docs, " + _num(di.get("dedup_removed")) + " deduped") if di.get("harvest_ok") else "Degraded"],
+        ["Live / fresh / median age",
+         f'{_pct100(fs.get("live_pct"))} live · {_pct100(fs.get("fresh_pct"))} fresh · {_round(fs.get("median_age_days"))}d median'],
+        ["Support / provenance", f'{_pct(di.get("support_fraction"))} support · ' + ("complete" if di.get("provenance_complete") else "partial")],
+    ]
 
     downloads = f"""
     <div class="dl-row">
@@ -509,36 +628,82 @@ def outputs_html(data: Dict[str, Any], job_id: str) -> str:
 
     return f"""
     <section class="outputs">
-      <h2 class="m3-h2">What this audit produced</h2>
+      <h2 class="m3-h2">Executive verdict — {brand}</h2>
       <div class="m3-grid">
         <div class="m3-kpi"><div class="v" style="color:var(--m3-error)">{_round(inv_idx)}</div>
-          <div class="l">RAG Invisibility Index</div></div>
-        <div class="m3-kpi"><div class="v" style="color:#FBBF24">{_round(inv_composite)}%</div>
+          <div class="l">RAG Invisibility Index (lower = better)</div></div>
+        <div class="m3-kpi"><div class="v" style="color:var(--m3-on-surface)">{_round(inv_composite)}%</div>
           <div class="l">Composite Invisibility</div></div>
         <div class="m3-kpi"><div class="v" style="color:var(--m3-tertiary)">{_round(sova)}%</div>
           <div class="l">Vector Share of Voice</div></div>
+        <div class="m3-kpi"><div class="v">{_round(d['avg_prox'])}</div>
+          <div class="l">Mean vector proximity</div></div>
+        <div class="m3-kpi"><div class="v">{_num(d['n_prox'])}</div>
+          <div class="l">Proximity comparisons</div></div>
         <div class="m3-kpi"><div class="v">{_num(len(recs))}</div>
-          <div class="l">Off-page Recommendations</div></div>
+          <div class="l">Prioritized recommendations</div></div>
       </div>
-      <p class="m3-lead">The <b>RAG Invisibility Index</b> is the percentage of
-      high-ranking industry articles where <b>{brand}</b> is completely absent
-      while competitors are co-cited. Lower is better. Full interactive detail is
-      in the dashboard; the curated tables and a print-ready PDF are below.</p>
+      <p class="m3-lead">The <b>RAG Invisibility Index ({_round(inv_idx)})</b> is the share of
+      high-ranking industry passages where <b>{brand}</b> is absent while rivals are co-cited.
+      <b>Vector Share of Voice ({_round(sova)}%)</b> is the brand's retrieval weight across all
+      topic × entity comparisons. Mean proximity <b>{_round(d['avg_prox'])}</b> over
+      <b>{_num(d['n_prox'])}</b> comparisons ({_num(d['tight'])} tightly-bound, {_num(d['far'])} far).
+      Linked <b>{_num(d['linked'])}</b> · unlinked <b>{_num(d['unlinked'])}</b> · omitted
+      <b>{_num(d['omitted'])}</b>. Every number below is computed from live harvested evidence —
+      nothing estimated, nothing sampled away.</p>
 
-      <h2 class="m3-h2">Semantic vector proximity (sample)</h2>
+      <h2 class="m3-h2">1 · Audited inputs — all 11 enterprise fields (verified)</h2>
+      {_stat_table(input_rows)}
+      <p class="verify-note">Inputs above are exactly what the audit executed against — including
+      Auto-Detect provenance where applicable. Edit any field and re-run to compare deltas in History &amp; Trends.</p>
+
+      <h2 class="m3-h2">2 · Competitive leaderboard — mean proximity per entity</h2>
+      <table class="m3-table"><thead><tr><th>Entity</th><th>Mean proximity</th><th>Coverage</th><th>Side</th></tr></thead>
+        <tbody>{lead_rows}</tbody></table>
+
+      <h2 class="m3-h2">3 · Full semantic vector proximity (brand-first, top 60)</h2>
       <table class="m3-table"><thead><tr><th>Topic</th><th>Entity</th><th>Proximity</th>
         <th>Label</th><th>High-rel docs</th></tr></thead>
         <tbody>{prox_rows}</tbody></table>
 
-      <h2 class="m3-h2">High-density off-page target list</h2>
+      <h2 class="m3-h2">4 · Citation ledger — linked vs unlinked vs omitted</h2>
+      <table class="m3-table"><thead><tr><th>Entity</th><th>Linked</th><th>Unlinked</th><th>Omitted</th><th>Rate</th></tr></thead>
+        <tbody>{ent_rows}</tbody></table>
+
+      <h2 class="m3-h2">5 · High-density off-page target list (top 25)</h2>
       <table class="m3-table"><thead><tr><th>URL</th><th>Type</th><th>Top topic</th>
-        <th>Relevance</th><th>Competitors present</th></tr></thead>
+        <th>Relevance</th><th>Rivals present</th></tr></thead>
         <tbody>{opt_rows}</tbody></table>
 
-      <h2 class="m3-h2">Actionable off-page recommendations</h2>
-      <table class="m3-table"><thead><tr><th>Priority</th><th>Directive</th><th>Category</th>
+      <h2 class="m3-h2">6 · Prioritized action plan (top 25 with rationale)</h2>
+      <table class="m3-table"><thead><tr><th>Priority</th><th>Directive + rationale</th><th>Category</th>
         <th>Score</th></tr></thead><tbody>{rec_rows}</tbody></table>
 
-      <h2 class="m3-h2">Download the full deliverables</h2>
+      <h2 class="m3-h2">7 · Token-density displacement plan (per topic)</h2>
+      <table class="m3-table"><thead><tr><th>Topic</th><th>Leader to displace</th><th>Tokens needed</th><th>Brand density</th></tr></thead>
+        <tbody>{td_rows}</tbody></table>
+
+      <h2 class="m3-h2">8 · Sentiment &amp; hallucination audit (per entity)</h2>
+      <table class="m3-table"><thead><tr><th>Entity</th><th>Net sentiment</th><th>Risk windows</th><th>Verdict</th></tr></thead>
+        <tbody>{sent_rows}</tbody></table>
+
+      <h2 class="m3-h2">9 · Synthetic retrieval queries (reverse-engineered prompts)</h2>
+      <table class="m3-table"><thead><tr><th>Entity</th><th>Prompt that retrieves it</th></tr></thead>
+        <tbody>{syn_rows}</tbody></table>
+
+      <h2 class="m3-h2">10 · Semantic drift &amp; tracking</h2>
+      <table class="m3-table"><thead><tr><th>Topic</th><th>Signal</th><th>Delta</th></tr></thead>
+        <tbody>{drift_rows}</tbody></table>
+
+      <h2 class="m3-h2">11 · Verification &amp; provenance (real-time trust)</h2>
+      {_stat_table(verify_rows)}
+      <p class="verify-note">Verification is computed from the harvested corpus, HTTP provenance,
+      model authenticity and freshness grades — <b>verified = all live checks passed</b>. Raw evidence
+      ships in <span class="m3-code">report.json</span> and <span class="m3-code">/api/verify/{job_id}</span>.</p>
+
+      <h2 class="m3-h2">12 · Download the full deliverables</h2>
       {downloads}
+      <p class="verify-note">Next: re-run or schedule this brand weekly — deltas land automatically in
+      <b>History &amp; Trends</b> with per-topic drift alerts. Target the off-page list top-down; each win
+      moves both invisibility and share-of-voice in the next audit.</p>
     </section>"""

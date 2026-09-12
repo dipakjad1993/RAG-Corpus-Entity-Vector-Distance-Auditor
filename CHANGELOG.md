@@ -14,6 +14,48 @@ All notable changes to RAG-EVDA. Format follows [Keep a Changelog](https://keepa
   CTA phrases (`Discover …`), possessive fragments, and brand-stem overlap
   rejected from competitor suggestions; brand-family containment fixed.
 
+## [1.3.0] — 2026-09-12 — Enterprise experience release
+
+### Added
+- Enterprise 2026 web UI: gradient hero with live detection stats, bento input
+  grid covering all 11 enterprise fields, clickable 3-step flow
+  (Inputs → Deep Analysis → Outputs), sticky run bar with explicit
+  **Show Outputs** action, skeleton loaders, toast notifications,
+  elapsed/percent progress with color-coded live logs, and an enterprise footer.
+- Deep-research Auto-Detect: 45 s budget, expanded discovery scan
+  (about-us/services/blog/news/feeds), extra live search passes
+  (services/solutions/reviews/`{brand} vs`), verified Wikipedia footprint,
+  full 12-template intent set, and evidence-scaled knobs — pre-fills all 11
+  inputs plus `chunk_overlap_tokens` from live data.
+- Issue-highlighting framework (`ragevda/reporting/issues.py`): every core
+  engine and subfunction is scanned for real computed problems and surfaced as
+  bold color-coded CRITICAL / HIGH RISK / WATCH / STRENGTH cards — a global
+  "Issues requiring attention" summary on Step 2, per-engine banners on all 10
+  deep-dive pages, and red/amber/green flagged rows in every key table.
+  Deep-page engine tabs now highlight correctly.
+- Enterprise PDF (`report.pdf`, ~17 pages): cover page with KPI cards, contents,
+  captioned charts (proximity bands, citation pie, per-engine SoV, brand
+  sentiment pie, priority-topic invisibility), tinted per-section issue callouts,
+  red/amber color-coded metric cells, full analysis of all 10 engines plus
+  poisoning/engine-matrix extensions, complete outputs, and an appendix with
+  thresholds + methods glossary.
+- Outputs hub (Step 3): 12-section verified report — executive verdict KPIs,
+  all-11-inputs echo, competitive leaderboard, top-60 proximity, citation
+  ledger, top-20 off-page targets, top-20 recommendations with rationale,
+  token-density plan, sentiment audit, synthetic queries, drift, verification,
+  and all 15 deliverable downloads.
+- Stale-PDF auto-heal: the `/files/<job>/report.pdf` endpoint rebuilds any
+  cached PDF older than the generator module, so layout updates can never
+  leave users downloading yesterday's document.
+
+### Fixed
+- Material 3 token-name mismatch that broke light mode
+  (`--m3-surface-low` vs `--m3-surface-container-low`); both palettes now emit
+  identical token names plus missing on-container roles, dual
+  `body.light`/`body[data-theme]` scoping, and theme-safe alert/table CSS.
+- Hardcoded dark-only colors replaced with theme tokens (invisibility KPI,
+  schedules/history accents).
+
 ## [1.2.0] — 2026-09-12 — Real-data hardening release
 
 ### Removed

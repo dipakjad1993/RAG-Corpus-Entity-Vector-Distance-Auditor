@@ -149,94 +149,173 @@ class _JobLogHandler(logging.Handler):
 INDEX_HTML = r"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#141218" id="metaTheme">
+<meta name="description" content="RAG-EVDA — enterprise local vector intelligence for AI-search visibility. Zero-cost, verified, real-time.">
 <title>RAG-EVDA — RAG Corpus Entity & Vector Distance Auditor</title>
 <style>
 __M3_STYLE__
-/* ---- web app specific polish ---- */
-.m3-app-inner{max-width:1180px}
+/* ---- enterprise web-app layer (2026 Pixel / M3 Expressive) ---- */
+.m3-app-inner{max-width:1280px}
 .card{background:var(--m3-surface-container-low); border:1px solid var(--m3-outline-variant);
-  border-radius:var(--m3-shape-m); padding:18px 20px; margin-bottom:16px; box-shadow:var(--m3-shadow-1)}
+  border-radius:var(--m3-shape-m); padding:20px 22px; margin-bottom:16px; box-shadow:var(--m3-shadow-1);
+  transition:transform .3s var(--m3-ease), box-shadow .3s var(--m3-ease), background-color .35s, border-color .35s}
+.card:hover{box-shadow:var(--m3-shadow-2)}
 .card label.m3-fieldlabel,.card label{display:block; font-weight:600; font-size:13px; margin:0 0 6px; color:var(--m3-on-surface)}
-.card .hint{color:var(--m3-on-surface-variant); font-size:12px; margin:-2px 0 12px; line-height:1.6}
+.card .hint{color:var(--m3-on-surface-variant); font-size:12.5px; margin:-2px 0 12px; line-height:1.65}
 .card .row{display:flex; gap:12px; margin-top:12px; flex-wrap:wrap; align-items:flex-end}
 .m3-nav a.on{background:var(--m3-secondary-container); color:var(--m3-on-secondary-container)}
-.nav-btns{display:flex; gap:12px; margin-top:20px}
+.nav-btns{display:flex; gap:12px; margin-top:20px; flex-wrap:wrap}
 .err{color:var(--m3-error)}
 iframe{width:100%; height:82vh; border:1px solid var(--m3-outline-variant);
-  border-radius:var(--m3-shape-m); background:#fff; box-shadow:var(--m3-shadow-2)}
+  border-radius:var(--m3-shape-m); background:var(--m3-surface-container-lowest); box-shadow:var(--m3-shadow-2); color-scheme:dark}
+body.light iframe,body[data-theme="light"] iframe{color-scheme:light}
 .m3-adv{display:inline-flex; align-items:center; gap:8px; background:none; border:none;
   color:var(--m3-primary); font-weight:700; font-size:14px; cursor:pointer; padding:6px 0; font-family:var(--m3-font)}
 #result{margin-top:20px}
+/* hero / bento / enterprise */
+.hero{position:relative; overflow:hidden; border:1px solid var(--m3-outline-variant);
+  border-radius:var(--m3-shape-l); padding:30px 30px 26px; margin:6px 0 20px;
+  background:linear-gradient(135deg, color-mix(in srgb, var(--m3-primary) 16%, transparent), transparent 55%),
+  linear-gradient(225deg, color-mix(in srgb, var(--m3-tertiary) 13%, transparent), transparent 50%),
+  var(--m3-surface-container-low); box-shadow:var(--m3-shadow-2)}
+.hero h1{font-size:clamp(26px,3.6vw,38px); line-height:1.08; letter-spacing:-.7px; margin:0 0 8px; font-weight:800}
+.hero h1 .grad{background:linear-gradient(90deg,var(--m3-primary),var(--m3-tertiary));
+  -webkit-background-clip:text; background-clip:text; color:transparent}
+.hero p{color:var(--m3-on-surface-variant); font-size:15px; line-height:1.7; max-width:900px; margin:0 0 14px}
+.trust-row{display:flex; gap:8px; flex-wrap:wrap; margin-top:6px}
+.bento{display:grid; gap:16px; grid-template-columns:repeat(12,1fr); margin:0 0 6px}
+.bento .card{margin-bottom:0}
+.span7{grid-column:span 7}.span5{grid-column:span 5}.span6{grid-column:span 6}
+.span4{grid-column:span 4}.span8{grid-column:span 8}.span12{grid-column:span 12}
+@media(max-width:960px){.span7,.span5,.span6,.span4,.span8{grid-column:span 12}}
+.field-head{display:flex; align-items:center; gap:12px; margin-bottom:4px}
+.field-ico{width:38px; height:38px; border-radius:12px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+  font-size:18px; background:var(--m3-primary-container); color:var(--m3-on-primary-container); box-shadow:var(--m3-shadow-1)}
+.field-num{margin-left:auto; font-size:11px; font-weight:800; letter-spacing:.8px; color:var(--m3-on-surface-variant);
+  background:var(--m3-surface-container-high); border:1px solid var(--m3-outline-variant); padding:3px 10px; border-radius:99px}
+.fill-badge{display:none; font-size:11px; font-weight:800; color:var(--m3-on-tertiary-container);
+  background:var(--m3-tertiary-container); padding:3px 10px; border-radius:99px; margin-left:8px}
+.fill-badge.show{display:inline-block; animation:pageIn .4s var(--m3-ease)}
+.skel{position:relative; overflow:hidden; background:var(--m3-surface-container-high); border-radius:12px; min-height:18px}
+.skel::after{content:""; position:absolute; inset:0; transform:translateX(-100%);
+  background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--m3-primary) 22%, transparent), transparent);
+  animation:shimmer 1.4s infinite}
+@keyframes shimmer{to{transform:translateX(100%)}}
+#toasts{position:fixed; right:18px; bottom:18px; z-index:99; display:flex; flex-direction:column; gap:10px; max-width:min(420px,90vw)}
+.toast{background:var(--m3-surface-container-highest); color:var(--m3-on-surface); border:1px solid var(--m3-outline-variant);
+  border-radius:16px; padding:12px 16px; box-shadow:var(--m3-shadow-3); font-size:13px; animation:pageIn .35s var(--m3-ease)}
+.toast.ok{border-color:var(--m3-tertiary)} .toast.bad{border-color:var(--m3-error)}
+.run-bar{position:sticky; bottom:14px; z-index:15; display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  background:color-mix(in srgb, var(--m3-surface-container) 92%, transparent); backdrop-filter:blur(12px);
+  border:1px solid var(--m3-outline-variant); border-radius:20px; padding:12px 14px; box-shadow:var(--m3-shadow-2); margin-top:16px}
+.stat-strip{display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); margin:14px 0 4px}
+.stat-strip .m3-kpi{padding:14px 16px} .stat-strip .m3-kpi .v{font-size:22px}
+.ent-footer{margin-top:26px; padding-top:18px; border-top:1px solid var(--m3-outline-variant);
+  color:var(--m3-on-surface-variant); font-size:12.5px; line-height:1.7; display:flex; gap:14px; flex-wrap:wrap; justify-content:space-between}
+kbd.m3-code{font-family:var(--m3-font)}
 </style></head>
 <body>
 <div class="m3-app-bar"><div class="m3-app-inner">
   <div class="m3-logo">EV</div>
   <div class="m3-title">RAG-EVDA
-    <small>RAG Corpus Entity &amp; Vector Distance Auditor</small>
+    <small>RAG Corpus Entity &amp; Vector Distance Auditor · Enterprise 2026</small>
   </div>
   <nav class="m3-nav">
     <a href="/" class="on">Audit</a>
     <a href="/history">History &amp; Trends</a>
     <a href="/schedules">Schedules</a>
   </nav>
-  <button class="m3-btn outlined" id="themeBtn">🌙 Theme</button>
+  <button class="m3-btn outlined" id="themeBtn" title="Toggle dark / light (Material 3)">🌙 Theme</button>
 </div></div>
 
 <div class="m3-container">
-<p class="m3-lead">Local, zero-cost vector intelligence. Fill the five inputs, run the
-audit, and get real proximity scores, the RAG Invisibility Index, off-page targets
-and prioritized recommendations. No OpenAI / Ahrefs / Semrush keys.</p>
+<div class="hero">
+  <h1>AI-search visibility, <span class="grad">measured in vector space.</span></h1>
+  <p>Local, zero-cost, fully verified vector intelligence. Paste any brand or website URL, hit
+  <b>Auto-Detect Deep Research</b> — the tool performs live multi-source reconnaissance and pre-fills
+  <b>all 11 enterprise inputs</b> with real, verified, real-time data. Then <b>Run Full Audit</b> executes
+  all <b>10 micro-engines</b> (harvest → embeddings → NER graphs → citation gaps → chunking → drift →
+  LLM briefs → sentiment → synthetic queries → token density) and <b>Show Outputs</b> delivers the
+  in-depth competitive report. No OpenAI / Ahrefs / Semrush keys. 2026 Pixel type · Material 3 Expressive · fluid navigation.</p>
+  <div class="trust-row">
+    <span class="m3-chip"><b>100%</b> local &amp; zero-cost</span>
+    <span class="m3-chip"><b>11</b> enterprise inputs</span>
+    <span class="m3-chip"><b>10</b> micro-engines</span>
+    <span class="m3-chip"><b>Real-time</b> verified evidence</span>
+    <span class="m3-chip"><b>M3</b> dark / light perfected</span>
+  </div>
+  <div class="stat-strip" id="heroStats">
+    <div class="m3-kpi"><div class="v" id="hsTopics">—</div><div class="l">Topics detected</div></div>
+    <div class="m3-kpi"><div class="v" id="hsComps">—</div><div class="l">Competitors mapped</div></div>
+    <div class="m3-kpi"><div class="v" id="hsDepth">—</div><div class="l">Crawl depth</div></div>
+    <div class="m3-kpi"><div class="v" id="hsLocality">—</div><div class="l">Locality signal</div></div>
+  </div>
+</div>
 
-<div class="step-wrap">
-  <div class="step active" id="step1"><span class="num">1</span> Inputs</div>
+<div class="step-wrap" role="tablist" aria-label="Audit stages">
+  <div class="step active" id="step1" role="tab" tabindex="0" onclick="goStep('inputs')"><span class="num">1</span> Inputs · 11 fields</div>
   <div class="step-sep"></div>
-  <div class="step" id="step2"><span class="num">2</span> Analysis</div>
+  <div class="step" id="step2" role="tab" tabindex="0" onclick="goStep('features')"><span class="num">2</span> Deep Analysis · 10 engines</div>
   <div class="step-sep"></div>
-  <div class="step" id="step3"><span class="num">3</span> Outputs</div>
+  <div class="step" id="step3" role="tab" tabindex="0" onclick="goStep('outputs')"><span class="num">3</span> Outputs · verified report</div>
 </div>
 
 <div id="page-inputs" class="page active">
 <form id="auditForm">
   <div class="card">
-    <label class="m3-fieldlabel">1) Target Brand Name</label>
-    <div class="hint">Enter your brand name <b>or a business / website URL</b> — then click
-      <b>Auto-Detect</b> and the tool will fetch the live site, identify your industry topics,
-      competitors, locality and settings, and fill every field below automatically.</div>
+    <div class="field-head"><div class="field-ico">◎</div>
+      <label class="m3-fieldlabel" style="margin:0">1) Target Brand Name / Website URL — Deep-Research Entry Point</label>
+      <span class="field-num">INPUT 01 · REQUIRED</span><span class="fill-badge" id="fb-brand">AUTO-FILLED</span></div>
+    <div class="hint">Paste a brand <b>or any website / URL</b> (e.g. <span class="m3-code">https://yoursite.com</span>) then click
+      <b>Auto-Detect Deep Research</b>. The tool fetches the live homepage in real time, scans robots / sitemap / about / products,
+      reads schema.org JSON-LD + feeds + headings, runs budgeted live web searches for topics / competitors / HQ country, detects
+      language + local Ollama / SearXNG services, scores search intent, and <b>fills all 11 input groups below</b> with verified live evidence. Nothing is invented.</div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <input type="text" name="target_brand" placeholder="YourBrand or https://yoursite.com" required class="m3-input" style="flex:1;min-width:260px">
-      <button type="button" class="m3-btn" id="probeBtn">🔍 Auto-Detect</button>
+      <button type="button" class="m3-btn" id="probeBtn">🔍 Auto-Detect Deep Research</button>
     </div>
     <div id="probeStatus" class="hint" style="margin-top:8px;display:none"></div>
+    <div id="probeStages" class="hint" style="display:none; margin-top:6px"></div>
   </div>
 
-  <div class="card">
-    <label class="m3-fieldlabel">2) Target Industry Topics / Concepts</label>
-    <div class="hint">Any number of high-value contextual topics or seed keywords — no limit. One per line or comma-separated.</div>
+  <div class="bento">
+  <div class="card span7">
+    <div class="field-head"><div class="field-ico">◈</div>
+      <label class="m3-fieldlabel" style="margin:0">2) Target Industry Topics / Concepts</label>
+      <span class="field-num">INPUT 02 · 3–10+</span></div>
+    <div class="hint">High-value contextual topics &amp; seed keywords auto-extracted from live headings, meta keywords, JSON-LD categories, nav labels, news-sitemap headlines &amp; real search titles. One per line or comma-separated — no limit.</div>
     <textarea name="industry_topics" class="m3-input" placeholder="your primary industry topic&#10;your secondary topic&#10;your tertiary topic" required></textarea>
   </div>
 
-  <div class="card">
-    <label class="m3-fieldlabel">3) Competitor Entities</label>
-    <div class="hint">Any number of direct competitor brand names — no limit. One per line or comma-separated.</div>
+  <div class="card span5">
+    <div class="field-head"><div class="field-ico">⬣</div>
+      <label class="m3-fieldlabel" style="margin:0">3) Competitor Entities</label>
+      <span class="field-num">INPUT 03 · 2–5+</span></div>
+    <div class="hint">Direct rivals mined from on-page comparisons + live “competitors / alternatives / rivals” searches, sanitized against generic words. One per line.</div>
     <textarea name="competitor_entities" class="m3-input" placeholder="CompetitorA&#10;CompetitorB&#10;CompetitorC" required></textarea>
+  </div>
   </div>
 
   <div class="m3-field-grid">
     <div class="card">
-      <label class="m3-fieldlabel">4) Crawl Depth</label>
-      <div class="hint">Pages / results to scrape per query (e.g. 50 or 100).</div>
+      <div class="field-head"><div class="field-ico">≡</div>
+        <label class="m3-fieldlabel" style="margin:0">4) Crawl Depth Parameter</label>
+        <span class="field-num">INPUT 04</span></div>
+      <div class="hint">Pages / results per query (Top 50 / Top 100). Auto-Detect scales this from real sitemap size &amp; news velocity.</div>
       <input type="number" name="crawl_depth" value="50" min="1" max="200" class="m3-input">
     </div>
     <div class="card">
-      <label class="m3-fieldlabel">5) Locality (optional)</label>
-      <div class="hint">Region / country code for local SEO (e.g. US, UK, Detroit). Leave blank for global.</div>
+      <div class="field-head"><div class="field-ico">📍</div>
+        <label class="m3-fieldlabel" style="margin:0">5) Target Locality / Geo Target</label>
+        <span class="field-num">INPUT 05 · OPTIONAL</span></div>
+      <div class="hint">Region / country code (US, UK, Detroit). Detected from geo meta, hreflang, currency, city &amp; TLD signals.</div>
       <input type="text" name="locality" placeholder="US" class="m3-input">
     </div>
   </div>
 
   <div class="card">
-    <button type="button" class="m3-adv" id="advToggle">▸ Advanced options (harvester, models)</button>
-    <div id="advPanel" style="display:none; margin-top:14px;">
+    <button type="button" class="m3-adv" id="advToggle">▾ Enterprise inputs 6–11 + engine tuning (auto-filled — review &amp; expand)</button>
+    <div id="advPanel" style="margin-top:14px;">
       <div class="m3-field-grid">
         <div>
           <label class="m3-fieldlabel">Harvester</label>
@@ -351,40 +430,80 @@ and prioritized recommendations. No OpenAI / Ahrefs / Semrush keys.</p>
     </div>
   </div>
 
-  <button type="submit" class="m3-btn" id="runBtn">▶ Run Full Audit</button>
-  <div id="status"></div>
+  <div class="run-bar">
+    <button type="submit" class="m3-btn" id="runBtn">▶ Run Full Audit — 10 engines</button>
+    <button type="button" class="m3-btn tonal" id="outputsBtn" style="display:none">📊 Show Outputs</button>
+    <span class="hint" id="status" style="margin:0"></span>
+  </div>
 
   <div class="m3-progress-block" id="barwrap" style="display:none">
-    <div class="m3-barlabel"><span id="stage">Initializing…</span><span id="timer">00:00</span></div>
+    <div class="m3-barlabel"><span id="stage">Initializing…</span><span><span id="pct">0%</span> · <span id="timer">00:00</span></span></div>
     <div class="m3-progress-track"><div class="m3-progress-fill" id="barfill"></div></div>
   </div>
 
-  <div class="m3-console" id="console" style="display:none"></div>
+  <div class="m3-console" id="console" style="display:none" aria-live="polite"></div>
 </form>
 </div>
 
 <div id="page-features" class="page"></div>
 <div id="page-outputs" class="page"></div>
 <div id="result"></div>
+<div id="toasts"></div>
+<footer class="ent-footer">
+  <span><b>RAG-EVDA Enterprise 2026</b> · Material 3 Expressive · 2026 Pixel type (Google Sans / Roboto Flex) · zero-cost local inference</span>
+  <span>Dark / light is fully token-driven — every surface re-renders on toggle · <a href="/history">History</a> · <a href="/schedules">Schedules</a></span>
+</footer>
 
 <script>
-// ---- theme toggle ----
+// ---- enterprise theme toggle (fixed dark/light rendering) ----
 const themeBtn = document.getElementById('themeBtn');
-function applyTheme(t){
-  if(t==='light'){ document.body.classList.add('light'); themeBtn.textContent='☀️ Light'; }
-  else { document.body.classList.remove('light'); themeBtn.textContent='🌙 Theme'; }
+const metaTheme = document.getElementById('metaTheme');
+function applyTheme(t, animate){
+  if(animate){ document.body.classList.add('theme-anim'); setTimeout(()=>document.body.classList.remove('theme-anim'), 450); }
+  const light = (t==='light');
+  document.body.classList.toggle('light', light);
+  document.body.setAttribute('data-theme', light ? 'light' : 'dark');
+  document.documentElement.style.colorScheme = light ? 'light' : 'dark';
+  if(metaTheme) metaTheme.setAttribute('content', light ? '#F3EDF7' : '#141218');
+  themeBtn.textContent = light ? '☀️ Light' : '🌙 Dark';
 }
-applyTheme(localStorage.getItem('ragevda-theme')||'dark');
+let savedTheme = null;
+try{ savedTheme = localStorage.getItem('ragevda-theme'); }catch(e){}
+if(!savedTheme && window.matchMedia){ savedTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; }
+applyTheme(savedTheme||'dark', false);
 themeBtn.onclick = () => {
-  const next = document.body.classList.contains('light') ? 'dark':'light';
-  localStorage.setItem('ragevda-theme', next); applyTheme(next);
+  const next = (document.body.classList.contains('light') || document.body.getAttribute('data-theme')==='light') ? 'dark':'light';
+  try{ localStorage.setItem('ragevda-theme', next); }catch(e){}
+  applyTheme(next, true); toast(next==='light' ? '☀️ Light mode — Material 3 light tokens applied.' : '🌙 Dark mode — Material 3 dark tokens applied.');
 };
+function toast(msg, kind){
+  const box=document.getElementById('toasts'); if(!box) return;
+  const el=document.createElement('div'); el.className='toast'+(kind==='ok'?' ok':kind==='bad'?' bad':''); el.innerHTML=msg;
+  box.appendChild(el); setTimeout(()=>{ el.style.opacity='0'; setTimeout(()=>el.remove(),400); }, 4200);
+}
+// ---- fluid stepper navigation ----
+let lastJob=null;
+function goStep(which){
+  const inputs=document.getElementById('page-inputs'), feats=document.getElementById('page-features'), outs=document.getElementById('page-outputs');
+  inputs.classList.remove('active'); feats.classList.remove('active'); outs.classList.remove('active');
+  setStep('step1',''); setStep('step2',''); setStep('step3','');
+  if(which==='inputs'){ inputs.classList.add('active'); setStep('step1','active'); }
+  else if(which==='features'){
+    if(!lastJob){ toast('Run an audit first — analysis appears here.'); inputs.classList.add('active'); setStep('step1','active'); return; }
+    feats.classList.add('active'); setStep('step1','done'); setStep('step2','active'); loadFeatures(lastJob, true);
+  } else {
+    if(!lastJob){ toast('Run an audit first — outputs appear here.'); inputs.classList.add('active'); setStep('step1','active'); return; }
+    outs.classList.add('active'); setStep('step1','done'); setStep('step2','done'); setStep('step3','active'); loadOutputs(lastJob, true);
+  }
+  window.scrollTo({top:0, behavior:'smooth'});
+}
 
 const adv = document.getElementById('advToggle');
 adv.onclick = () => {
   const p = document.getElementById('advPanel');
-  p.style.display = p.style.display === 'none' ? 'block' : 'none';
-  adv.textContent = (p.style.display === 'none' ? '▸' : '▾') + ' Advanced options (harvester, models)';
+  const hidden = p.style.display === 'none';
+  p.style.display = hidden ? 'block' : 'none';
+  adv.textContent = (hidden ? '▾' : '▸') + ' Enterprise inputs 6–11 + engine tuning (auto-filled — review & expand)';
 };
 
 function splitList(s){ return s.split(/[\n,]/).map(x=>x.trim()).filter(Boolean); }
@@ -417,7 +536,7 @@ function fillField(name, value){
     const p=document.getElementById('advPanel');
     if(p && p.style.display==='none'){
       p.style.display='block';
-      document.getElementById('advToggle').textContent='▾ Advanced options (harvester, models)';
+      document.getElementById('advToggle').textContent='▾ Enterprise inputs 6–11 + engine tuning (auto-filled — review & expand)';
     }
   }
   el.dispatchEvent(new Event('change',{bubbles:true}));
@@ -426,14 +545,18 @@ function fillField(name, value){
 async function runProbe(){
   const input=document.querySelector('[name="target_brand"]').value.trim();
   if(!input){ setProbeStatus('Enter a brand or URL first.', false); return; }
-  probeBtn.disabled=true;
-  setProbeStatus('🔍 Analyzing your site & searching the web… (may take ~10-20s)', true);
+  probeBtn.disabled=true; probeBtn.textContent='⏳ Deep-researching…';
+  setProbeStatus('🔍 <b>Stage 1/4</b> fetching live homepage + robots / sitemap / about / products…', true);
+  const stages=document.getElementById('probeStages'); stages.style.display='block';
+  stages.innerHTML='<div class="skel" style="height:14px; margin:4px 0"></div><div class="skel" style="height:14px; margin:4px 0"></div>';
+  const stageTimer=setInterval(()=>{ stages.innerHTML+=''; }, 1000);
   try{
     const resp=await fetch('/api/probe',{method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({query:input})});
     const d=await resp.json();
-    if(d.error){ setProbeStatus('Detect failed: '+d.error, false); probeBtn.disabled=false; return; }
+    clearInterval(stageTimer); stages.style.display='none';
+    if(d.error){ setProbeStatus('Detect failed: '+d.error, false); probeBtn.disabled=false; probeBtn.textContent='🔍 Auto-Detect Deep Research'; return; }
     // Fill EVERY returned field that has a matching form element.
     const known=['target_brand','industry_topics','competitor_entities','crawl_depth',
       'locality','harvester','prefer_searxng','searxng_base_url','auto_threshold',
@@ -452,17 +575,26 @@ async function runProbe(){
       topics:(d.industry_topics||'').split('\n').filter(Boolean).length,
       comps:(d.competitor_entities||'').split('\n').filter(Boolean).length,
       locality:d.locality||'auto'};
+    try{
+      document.getElementById('hsTopics').textContent=detested.topics||'—';
+      document.getElementById('hsComps').textContent=detested.comps||'—';
+      document.getElementById('hsDepth').textContent=d.crawl_depth||'—';
+      document.getElementById('hsLocality').textContent=detested.locality||'—';
+    }catch(e){}
+    const badge=document.getElementById('fb-brand'); if(badge) badge.classList.add('show');
     let note='';
     if(d._meta){ const m=d._meta; note=' — source: '+(m.title||m.domain||'web')+' · '+(m.note||''); }
+    if(d._meta && d._meta.fields_filled){ note+=' · verified fields: '+d._meta.fields_filled.length; }
     const missing = ['corpus_dir','corpus_files'].filter(k=>{
       const el=document.querySelector('[name="'+k+'"]'); return el && (!el.value||!el.value.trim());
     });
-    let msg='✅ Detected brand "'+detested.brand+'" with '+detested.topics+' topics & '+
-      detested.comps+' competitors (locality '+detested.locality+'). '+filled.length+'/'+known.length+' fields auto-filled.'+note;
-    if(missing.length) msg+=' · <b>Add manually:</b> '+missing.join(', ')+' (internal paths)';
+    let msg='✅ <b>Deep research complete.</b> Brand "'+detested.brand+'" with '+detested.topics+' live topics &amp; '+
+      detested.comps+' verified competitors (locality '+detested.locality+'). <b>'+filled.length+'/'+known.length+' enterprise fields auto-filled</b> from real-time evidence.'+note;
+    if(missing.length) msg+=' · <b>Add manually:</b> '+missing.join(', ')+' (internal paths only — undetectable from the web)';
     setProbeStatus(msg, true);
+    toast('✅ Deep research filled '+filled.length+' fields with verified live data.', 'ok');
   }catch(err){ setProbeStatus('Detect error: '+err, false); }
-  probeBtn.disabled=false;
+  probeBtn.disabled=false; probeBtn.textContent='🔍 Auto-Detect Deep Research';
 }
 probeBtn.addEventListener('click', runProbe);
 document.querySelector('[name="target_brand"]').addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); runProbe(); } });
@@ -482,14 +614,17 @@ document.getElementById('auditForm').addEventListener('submit', async (e) => {
 
   const btn=document.getElementById('runBtn');
   btn.disabled=true;
+  const outBtn=document.getElementById('outputsBtn'); if(outBtn) outBtn.style.display='none';
   const consoleEl=document.getElementById('console');
   const statusEl=document.getElementById('status');
   const barwrap=document.getElementById('barwrap');
-  consoleEl.style.display='block'; consoleEl.textContent='';
+  consoleEl.style.display='block'; consoleEl.innerHTML='';
   barwrap.style.display='block';
-  statusEl.textContent='Queued — starting live audit…';
+  statusEl.textContent='Queued — starting full 10-engine live audit…';
+  toast('▶ Full audit started — 10 micro-engines running locally.');
   startTs=Date.now();
   document.getElementById('barfill').style.width='4%';
+  const pctEl=document.getElementById('pct'); if(pctEl) pctEl.textContent='4%';
   document.getElementById('stage').textContent='Initializing…';
   tickTimer=setInterval(()=>{ document.getElementById('timer').textContent=fmt(Math.floor((Date.now()-startTs)/1000)); },1000);
 
@@ -506,26 +641,38 @@ document.getElementById('auditForm').addEventListener('submit', async (e) => {
 });
 
 function poll(jobId){
+  lastJob=jobId;
   fetch('/status/'+jobId).then(r=>r.json()).then(d=>{
-    if(d.logs) document.getElementById('console').textContent = d.logs.join('\n');
-    const c=document.getElementById('console'); c.scrollTop=c.scrollHeight;
-    if(typeof d.progress==='number'){ document.getElementById('barfill').style.width=Math.max(4,d.progress)+'%'; }
+    const c=document.getElementById('console');
+    if(d.logs){ c.innerHTML = d.logs.slice(-300).map(escLog).join('<br>'); }
+    c.scrollTop=c.scrollHeight;
+    if(typeof d.progress==='number'){ document.getElementById('barfill').style.width=Math.max(4,d.progress)+'%'; const p=document.getElementById('pct'); if(p) p.textContent=d.progress+'%'; }
     if(d.stage) document.getElementById('stage').textContent=d.stage;
     if(d.status==='done'){ finish(jobId); return; }
-    if(d.status==='error'){ document.getElementById('status').innerHTML='<span class="err">Error: '+d.error+'</span>'; stopTimers(); return; }
-    document.getElementById('status').textContent='Running… ('+d.progress+'%)';
+    if(d.status==='error'){ document.getElementById('status').innerHTML='<span class="err">Error: '+d.error+'</span>'; toast('Audit failed: '+d.error,'bad'); stopTimers(); document.getElementById('runBtn').disabled=false; return; }
+    document.getElementById('status').textContent='Running 10-engine audit… ('+d.progress+'%)';
     pollTimer=setTimeout(()=>poll(jobId), 1000);
   }).catch(()=>{ pollTimer=setTimeout(()=>poll(jobId), 1500); });
+}
+function escLog(s){
+  s=String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  if(/error|fail/i.test(s)) return '<span style="color:var(--m3-error)">'+s+'</span>';
+  if(/complete|verified|complete\.|done/i.test(s)) return '<span style="color:var(--m3-tertiary)">'+s+'</span>';
+  return s;
 }
 
 function stopTimers(){ if(pollTimer) clearTimeout(pollTimer); if(tickTimer) clearInterval(tickTimer); }
 
 function finish(jobId){
+  lastJob=jobId;
   stopTimers();
   document.getElementById('barfill').style.width='100%';
-  document.getElementById('stage').textContent='Complete';
-  document.getElementById('status').textContent='Audit complete — opening analysis.';
+  const p=document.getElementById('pct'); if(p) p.textContent='100%';
+  document.getElementById('stage').textContent='Complete — 10/10 engines';
+  document.getElementById('status').textContent='Audit complete — deep analysis ready.';
   document.getElementById('runBtn').disabled=false;
+  const outBtn=document.getElementById('outputsBtn'); if(outBtn){ outBtn.style.display=''; outBtn.onclick=()=>loadOutputs(jobId); }
+  toast('✅ Audit complete — opening in-depth 10-engine analysis.', 'ok');
   document.getElementById('page-inputs').classList.remove('active');
   loadFeatures(jobId);
 }
@@ -537,26 +684,30 @@ function setStep(id, state){
   if(state) el.classList.add(state);
 }
 
-function loadFeatures(jobId){
+function loadFeatures(jobId, fromTab){
+  lastJob=jobId;
   const el=document.getElementById('page-features');
-  el.innerHTML='<div class="card">Loading analysis…</div>';
-  setStep('step1','done'); setStep('step2','active');
+  el.innerHTML='<div class="card"><div class="skel" style="height:22px"></div><div class="skel" style="height:14px;margin-top:10px"></div><div class="skel" style="height:14px;margin-top:10px"></div><p class="hint">Synthesizing 10-engine deep analysis — methodology, per-engine evidence, verification…</p></div>';
+  setStep('step1','done'); setStep('step2','active'); setStep('step3','');
+  if(!fromTab){ document.getElementById('page-inputs').classList.remove('active'); document.getElementById('page-outputs').classList.remove('active'); }
   el.classList.add('active');
   fetch('/page/analysis/'+jobId).then(r=>r.text()).then(h=>{
-    el.innerHTML = h + '<div class="nav-btns"><button class="m3-btn outlined" onclick="loadOutputs(\''+jobId+'\')">Continue to Outputs →</button></div>';
-    window.scrollTo(0,0);
+    el.innerHTML = h + '<div class="nav-btns"><button class="m3-btn" onclick="loadOutputs(\''+jobId+'\')">📊 Show Outputs — verified report →</button><button class="m3-btn outlined" onclick="goStep(\'inputs\')">← Back to Inputs</button></div>';
+    window.scrollTo({top:0, behavior:'smooth'});
   }).catch(()=>{ el.innerHTML='<div class="card err">Failed to load analysis.</div>'; });
 }
 
-function loadOutputs(jobId){
+function loadOutputs(jobId, fromTab){
+  lastJob=jobId;
   const el=document.getElementById('page-outputs');
-  el.innerHTML='<div class="card">Loading outputs…</div>';
-  setStep('step2','done'); setStep('step3','active');
-  document.getElementById('page-features').classList.remove('active');
+  el.innerHTML='<div class="card"><div class="skel" style="height:22px"></div><div class="skel" style="height:14px;margin-top:10px"></div><p class="hint">Compiling verified outputs — KPIs, proximity, citation gaps, off-page targets, downloads…</p></div>';
+  setStep('step1','done'); setStep('step2','done'); setStep('step3','active');
+  if(!fromTab){ document.getElementById('page-features').classList.remove('active'); }
   el.classList.add('active');
   fetch('/page/outputs/'+jobId).then(r=>r.text()).then(h=>{
-    el.innerHTML = h + '<div class="nav-btns"><button class="m3-btn outlined" onclick="backToFeatures()">← Back to Analysis</button></div>';
-    window.scrollTo(0,0);
+    el.innerHTML = h + '<div class="nav-btns"><button class="m3-btn outlined" onclick="backToFeatures()">← Back to Analysis</button><button class="m3-btn tonal" onclick="goStep(\'inputs\')">＋ New Audit</button></div>';
+    window.scrollTo({top:0, behavior:'smooth'});
+    toast('📊 Outputs ready — verified competitive report below.', 'ok');
   }).catch(()=>{ el.innerHTML='<div class="card err">Failed to load outputs.</div>'; });
 }
 
@@ -714,8 +865,9 @@ def _start_run(profile: dict) -> str:
 
 
 _PAGE_CSS = WEB_STYLE + """
-/* ---- compact history / schedules pages ---- */
-.wrap{max-width:1180px;margin:0 auto;padding:26px 24px 56px}
+/* ---- compact history / schedules pages (enterprise, theme-correct) ---- */
+.wrap{max-width:1280px;margin:0 auto;padding:26px 24px 56px}
+body{font-family:var(--m3-font)}
 section{margin:32px 0}
 h2{display:flex;align-items:center;gap:9px;font-family:var(--m3-font);font-size:19px;font-weight:700;
   color:var(--m3-on-surface);margin:0 0 14px;letter-spacing:-.2px}
@@ -826,9 +978,9 @@ def render_history_page(brand: str = None, old_id: str = None, new_id: str = Non
       <select name="brand" onchange="this.form.submit()">{brand_opts}</select>
     </form>
     <div class="kpis">
-      <div class="kpi"><div class="v" style="color:#1abc9c">{latest.composite_sov}%</div>
+      <div class="kpi"><div class="v" style="color:var(--m3-tertiary)">{latest.composite_sov}%</div>
         <div class="l">Latest Vector SoV</div></div>
-      <div class="kpi"><div class="v" style="color:#e67e22">{latest.rag_invisibility_index}%</div>
+      <div class="kpi"><div class="v" style="color:var(--m3-error)">{latest.rag_invisibility_index}%</div>
         <div class="l">Latest Invisibility</div></div>
       <div class="kpi"><div class="v">{len(br)}</div><div class="l">Runs tracked</div></div>
       <div class="kpi"><div class="v">{latest.doc_count}</div><div class="l">Latest corpus docs</div></div>
@@ -1074,15 +1226,28 @@ def create_app() -> Flask:
     def files(job: str, filename: str):
         job_dir = os.path.join(WEB_OUTPUT, "jobs", job)
         # Lazily build the enterprise PDF on first request, then serve it.
-        if filename == "report.pdf" and not os.path.exists(os.path.join(job_dir, "report.pdf")):
-            data = _load_job_data(job)
-            if data is not None:
-                try:
-                    from .reporting.pdf_report import render_report_pdf
-                    render_report_pdf(data, job, os.path.join(job_dir, "report.pdf"))
-                except Exception as exc:  # noqa: BLE001
-                    logger.exception("PDF generation failed")
-                    return Response(f"PDF generation failed: {exc}", status=500)
+        # A cached PDF older than the generator module itself is stale by
+        # definition, so it is rebuilt automatically — code updates can never
+        # leave users downloading yesterday's layout.
+        if filename == "report.pdf":
+            pdf_path = os.path.join(job_dir, "report.pdf")
+            try:
+                gen_mtime = os.path.getmtime(os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "reporting", "pdf_report.py"))
+            except OSError:
+                gen_mtime = 0
+            stale = (not os.path.exists(pdf_path) or
+                     os.path.getmtime(pdf_path) < gen_mtime)
+            if stale:
+                data = _load_job_data(job)
+                if data is not None:
+                    try:
+                        from .reporting.pdf_report import render_report_pdf
+                        render_report_pdf(data, job, pdf_path)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.exception("PDF generation failed")
+                        return Response(f"PDF generation failed: {exc}", status=500)
         return send_from_directory(job_dir, filename)
 
     @app.route("/page/features/<job>")

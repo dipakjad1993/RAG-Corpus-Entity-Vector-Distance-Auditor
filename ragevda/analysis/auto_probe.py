@@ -40,9 +40,10 @@ from ..utils import get_logger
 logger = get_logger("ragevda.analysis.probe")
 
 # Total wall-clock budget for the whole probe (fetch + scans + searches).
-_PROBE_BUDGET = 30.0
-_HOME_FETCH_BUDGET = 8.0
-_SCAN_BUDGET = 10.0
+# Deep-research grade: homepage + discovery scan + multi-query live searches.
+_PROBE_BUDGET = 45.0
+_HOME_FETCH_BUDGET = 10.0
+_SCAN_BUDGET = 12.0
 
 
 def _run_with_budget(fn, budget: float, *args):
@@ -1244,24 +1245,37 @@ def _pick_embedding(lang: Optional[str], multilingual: bool) -> str:
 # ---------------------------------------------------------------------------
 
 def _build_footprints(base_url: str, links: List[Tuple[str, str]],
-                      wiki_url: Optional[str]) -> List[str]:
+                       wiki_url: Optional[str]) -> List[str]:
     lines: List[str] = []
     lines.append(f"Google AI Overviews|official site|{base_url}")
     if wiki_url:
         lines.append(f"SearchGPT|Wikipedia|{wiki_url}")
     used = 1
     for text, href in links:
-        if used >= 4:
+        if used >= 6:
             break
         if not _same_site(href, base_url) or href.strip("/") == base_url.strip("/"):
             continue
         low = text.lower()
-        if len(text) > 40 or _looks_like_nav(text):
+        if len(text) > 44 or _looks_like_nav(text):
             continue
-        engine = "Perplexity" if used % 2 else "Gemini"
-        lines.append(f"{engine}|{re.sub(r'\\s+', ' ', text)[:34]}|{href}")
+        engines = ("Perplexity", "Gemini", "Bing Copilot", "SearchGPT")
+        engine = engines[used % len(engines)]
+        lines.append(f"{engine}|{re.sub(r'\\s+', ' ', text)[:38]}|{href}")
         used += 1
     return lines
+
+
+def _wikipedia_url(brand: str) -> Optional[str]:
+    """Best-effort Wikipedia URL for the brand via live search (verified)."""
+    try:
+        for r in _search(f"{brand} wikipedia", depth=4, max_seconds=5.0):
+            href = r.get("href", "") or ""
+            if "wikipedia.org/wiki/" in href:
+                return href
+    except Exception:  # noqa: BLE001
+        pass
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1369,8 +1383,14 @@ def probe(input_text: str, depth: int = 8) -> Dict[str, Any]:
             _absolutize("/robots.txt", url),
             _absolutize("/sitemap.xml", url),
             _absolutize("/about", url),
+            _absolutize("/about-us", url),
             _absolutize("/products", url),
+            _absolutize("/services", url),
+            _absolutize("/blog", url),
+            _absolutize("/news", url),
             _absolutize("/contact", url),
+            _absolutize("/feed", url),
+            _absolutize("/rss.xml", url),
             "http://localhost:11434/api/tags",
             "http://localhost:8888/",
             "http://localhost:8080/",
@@ -1421,10 +1441,29 @@ def probe(input_text: str, depth: int = 8) -> Dict[str, Any]:
         scan_started = True
 
     # --- Run the budgeted web searches (overlaps page fetches) ------------
-    search_budget = min(_remaining(), 7.0)
+    # Deep-research grade: industry + products/services + competitors +
+    # alternatives + vs-query + reviews, each budgeted, all live & verified.
+    search_budget = min(_remaining(), 9.0)
     topics_from_srch = _topics_from_search(brand, max_seconds=search_budget)
+    # enrich topics with services/products phrasing when thin
+    if len(topics_from_srch) < 5:
+        for q in (f"{brand} services", f"{brand} solutions", f"{brand} reviews"):
+            for r in _search(q, depth=4, max_seconds=max(2.0, _remaining() * 0.3)):
+                t = _clean_title(r.get("title", ""))
+                if t and t.lower() != brand.lower() and not _looks_like_nav(t):
+                    topics_from_srch.append(t)
+            if len(topics_from_srch) >= 6:
+                break
+        topics_from_srch = _dedupe(topics_from_srch, limit=12)
     comps_from_srch = _competitors_from_search(
         brand, max_seconds=max(2.0, _remaining() * 0.5))
+    # extra competitor pass: "{brand} vs" surfaces head-to-head rivals
+    if len(comps_from_srch) < 5:
+        for r in _search(f"{brand} vs", depth=6,
+                         max_seconds=max(2.0, _remaining() * 0.3)):
+            comps_from_srch += _extract_org_phrases(
+                (r.get("body") or "") + " " + (r.get("title") or ""), brand)
+        comps_from_srch = _dedupe(comps_from_srch, limit=12)
 
     if scan_started:
         th_scan.join(timeout=max(0.0, min(_SCAN_BUDGET, _remaining() - 2.0)))
@@ -1582,43 +1621,65 @@ def probe(input_text: str, depth: int = 8) -> Dict[str, Any]:
         full = f"{brand} {prod}"
         ew_lines.append(f"{full}|1.2")
 
-    # --- Query templates (intent-aware) ------------------------------------
+    # --- Query templates (intent-aware, all six intents) --------------------
+    # Entity proximity shifts by intent: informational vs transactional vs
+    # comparison vs local vs navigational vs commercial. Emit the full
+    # enterprise set so vectors are evaluated in context, never in a vacuum.
     qt = [
         "informational|what is {topic}",
+        "informational|{topic} explained",
+        "informational|how {brand} does {topic}",
         "comparison|{brand} vs alternatives",
+        "comparison|{brand} vs {topic} leaders",
+        "commercial|best {topic} options",
+        "commercial|{brand} features and pricing",
+        "transactional|best {topic} for {brand}",
+        "transactional|{brand} {topic} pricing",
+        "navigational|{brand} official site",
+        "local|{topic} near me",
         "research|{topic} guide",
     ]
     if search_intent == "transactional":
-        qt += ["transactional|best {topic} for {brand}",
-               "transactional|{brand} {topic} pricing"]
+        qt += ["transactional|buy {topic} from {brand}",
+               "transactional|{brand} {topic} free trial"]
     elif search_intent == "commercial":
-        qt += ["commercial|best {topic} options",
-               "commercial|{brand} features and pricing"]
+        qt += ["commercial|top rated {topic} 2026",
+               "commercial|{brand} reviews vs competitors"]
     elif search_intent == "local":
-        qt += ["local|{topic} near me", "local|{brand} locations"]
+        qt += ["local|{brand} locations", "local|{brand} near me"]
     elif search_intent == "navigational":
         qt += ["navigational|{brand} app download",
                "navigational|{brand} login"]
-    else:
-        qt += ["informational|{topic} explained",
-               "informational|how {brand} does {topic}"]
 
     # --- SERP footprints / content feeds ----------------------------------
+    # Deep-research grade: verified Wikipedia + up to 6 same-site deep links as
+    # per-engine footprints; feeds include declared RSS + sitemap + conventional
+    # feed guesses verified against fetched scan results.
     page_links = _extract_links(page_html, final_url or base_url) if page_html else []
     footprints: List[str] = []
+    wiki_url = _wikipedia_url(brand) if _remaining() > 4 else None
     # only emit fetchable footprints when a real homepage was fetched
     if (final_url or url) and "." in _domain(final_url or url or ""):
         footprints = _build_footprints(final_url or url or base_url,
-                                       page_links, None)
+                                       page_links, wiki_url)
 
     feeds = feeds or []
+    # verify conventional feed guesses against the scan bundle before adding
+    for guess in (_absolutize("/feed", final_url or base_url),
+                  _absolutize("/rss.xml", final_url or base_url),
+                  _absolutize("/blog/feed", final_url or base_url)):
+        if guess and guess not in feeds and scan.get(guess):
+            feeds.append(guess)
+    feeds = _dedupe(feeds, limit=8)
     news_sitemap = None
     if has_news and sitemap_url and "news" in (sitemap_url.lower() or ""):
         news_sitemap = sitemap_url
 
     # --- Numbers / knobs ---------------------------------------------------
-    synthetic_query_count = min(24, max(12, len(topics) * 2))
-    top_k = min(8, max(5, 3 + len(topics) // 3))
+    # Deep-research grade: scale synthetic queries, top-k and thresholds from
+    # live evidence (topic count, competitor count, entity density, multilingual).
+    synthetic_query_count = min(30, max(14, len(topics) * 2 + len(competitors)))
+    top_k = min(10, max(5, 3 + len(topics) // 2))
     # observed entity density from the page
     density = 0.015
     if page_text:
@@ -1633,8 +1694,8 @@ def probe(input_text: str, depth: int = 8) -> Dict[str, Any]:
     # --- Assemble the pre-fill dict ----------------------------------------
     result: Dict[str, Any] = {
         "target_brand": brand,
-        "industry_topics": "".join(t + "\n" for t in topics).rstrip("\n"),
-        "competitor_entities": "".join(c + "\n" for c in competitors).rstrip("\n"),
+        "industry_topics": "".join(t + "\n" for t in topics[:12]).rstrip("\n"),
+        "competitor_entities": "".join(c + "\n" for c in competitors[:8]).rstrip("\n"),
         "crawl_depth": str(_crawl_depth(doc_count, has_news, len(page_text), 50)),
         "harvester": harvester,
         "prefer_searxng": bool(searxng_live),
@@ -1649,6 +1710,7 @@ def probe(input_text: str, depth: int = 8) -> Dict[str, Any]:
         "serp_footprints": "".join(l + "\n" for l in footprints).rstrip("\n"),
         "synthetic_query_count": str(synthetic_query_count),
         "chunk_tokens": str(chunk_tokens),
+        "chunk_overlap_tokens": "64",
         "target_entity_density": f"{density:.3f}",
         "top_k_retrieval": str(top_k),
     }

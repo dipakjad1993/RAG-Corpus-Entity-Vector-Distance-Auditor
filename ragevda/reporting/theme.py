@@ -46,17 +46,22 @@ _FONT_FALLBACK = (
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 )
 
-# Authentic Material 3 color tokens.
-# mood -> {"light": {...}, "dark": {...}} with M3 role names.
+# Authentic Material 3 color tokens — 2026 Google Pixel / Material 3 Expressive.
+# Dark baseline matches Pixel system dark (Google Messages / Pixel Studio tones);
+# light baseline matches Pixel system light. Both expose identical token names so
+# runtime dark<->light switching re-renders every surface correctly.
 _M3_DARK = {
     "primary": "#D0BCFF", "on-primary": "#381E72",
     "primary-container": "#4F378B", "on-primary-container": "#EADDFF",
-    "secondary": "#CCC2DC", "on-secondary": "#332D41", "secondary-container": "#4A4458",
-    "tertiary": "#EFB8C8", "on-tertiary": "#492532", "tertiary-container": "#633B48",
-    "error": "#F2B8B5", "on-error": "#601410", "error-container": "#8C1D18",
+    "secondary": "#CCC2DC", "on-secondary": "#332D41",
+    "secondary-container": "#4A4458", "on-secondary-container": "#E8DEF8",
+    "tertiary": "#EFB8C8", "on-tertiary": "#492532",
+    "tertiary-container": "#633B48", "on-tertiary-container": "#FFD8E4",
+    "error": "#F2B8B5", "on-error": "#601410",
+    "error-container": "#8C1D18", "on-error-container": "#FFDAD6",
     "surface": "#141218", "surface-dim": "#141218", "surface-bright": "#3B383E",
-    "surface-container-lowest": "#0E0D11", "surface-container-low": "#1C1A20",
-    "surface-container": "#211F26", "surface-container-high": "#2B292F",
+    "surface-container-lowest": "#0E0D11", "surface-container-low": "#1D1B20",
+    "surface-container": "#211F26", "surface-container-high": "#2B2930",
     "surface-container-highest": "#36343B",
     "on-surface": "#E6E0E9", "on-surface-variant": "#CAC4D0",
     "outline": "#938F99", "outline-variant": "#49454F", "scrim": "#000000",
@@ -65,10 +70,13 @@ _M3_DARK = {
 _M3_LIGHT = {
     "primary": "#6750A4", "on-primary": "#FFFFFF",
     "primary-container": "#EADDFF", "on-primary-container": "#21005D",
-    "secondary": "#625B71", "on-secondary": "#FFFFFF", "secondary-container": "#E8DEF8",
-    "tertiary": "#7D5260", "on-tertiary": "#FFFFFF", "tertiary-container": "#FFD8E4",
-    "error": "#BA1A1A", "on-error": "#FFFFFF", "error-container": "#FFDAD6",
-    "surface": "#FFFBFE", "surface-dim": "#DED8E1", "surface-bright": "#FFFBFE",
+    "secondary": "#625B71", "on-secondary": "#FFFFFF",
+    "secondary-container": "#E8DEF8", "on-secondary-container": "#1D192B",
+    "tertiary": "#7D5260", "on-tertiary": "#FFFFFF",
+    "tertiary-container": "#FFD8E4", "on-tertiary-container": "#31111D",
+    "error": "#BA1A1A", "on-error": "#FFFFFF",
+    "error-container": "#FFDAD6", "on-error-container": "#410002",
+    "surface": "#FEF7FF", "surface-dim": "#DED8E1", "surface-bright": "#FEF7FF",
     "surface-container-lowest": "#FFFFFF", "surface-container-low": "#F7F2FA",
     "surface-container": "#F3EDF7", "surface-container-high": "#ECE6F0",
     "surface-container-highest": "#E6E0E9",
@@ -117,9 +125,12 @@ def _palette(mood: str) -> Dict[str, str]:
 def material_css(mood: str, selector: str = ":root") -> str:
     """Material 3 color/type/shape tokens under ``selector`` (no component rules).
 
-    For the webapp the light palette is scoped under ``body.light`` so the dark
-    ``:root`` tokens stay intact for runtime theme toggling. Component styles are
-    emitted separately once via :func:`components_css`.
+    For the webapp the light palette is scoped under ``body.light`` (plus
+    ``body[data-theme="light"]`` alias) so the dark ``:root`` tokens stay intact
+    for runtime theme toggling. Component styles are emitted separately once via
+    :func:`components_css`. Token names intentionally match every
+    ``var(--m3-*)`` reference used by components/history/dashboard/narrative so
+    toggling the theme re-renders every color correctly in both modes.
     """
     p = _palette(mood)
     elev = _LIGHT_ELEVATION if mood == "light" else _DARK_ELEVATION
@@ -127,7 +138,8 @@ def material_css(mood: str, selector: str = ":root") -> str:
     def v(name: str) -> str:
         return str(p.get(name, ""))
 
-    # Type scale (display/headline/title/body/label) in Roboto Flex.
+    # Type scale — 2026 Pixel stack: Google Sans / Product Sans on Pixel phones,
+    # Roboto Flex fallback everywhere else (embedded offline as data URI).
     type_scale = f"""
   --type-display:400 57px/normal '{FONT_FAMILY}',{_FONT_FALLBACK};
   --type-display-l:400 45px/normal '{FONT_FAMILY}',{_FONT_FALLBACK};
@@ -145,6 +157,15 @@ def material_css(mood: str, selector: str = ":root") -> str:
   --type-label-s:500 11px/1.4 '{FONT_FAMILY}',{_FONT_FALLBACK};
   --type-mono:500 12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 """
+    shadow_1 = ("0 1px 2px rgba(28,27,31,.08),0 1px 3px rgba(28,27,31,.10)"
+                if mood == "light" else
+                "0 1px 3px rgba(0,0,0,.3),0 1px 2px rgba(0,0,0,.24)")
+    shadow_2 = ("0 2px 6px rgba(28,27,31,.10),0 1px 4px rgba(28,27,31,.08)"
+                if mood == "light" else
+                "0 2px 6px rgba(0,0,0,.24),0 1px 4px rgba(0,0,0,.22)")
+    shadow_3 = ("0 8px 20px rgba(103,80,164,.16),0 2px 8px rgba(28,27,31,.10)"
+                if mood == "light" else
+                "0 6px 14px rgba(0,0,0,.26),0 2px 8px rgba(0,0,0,.20)")
     color_block = f"""
   color-scheme:{'light' if mood == 'light' else 'dark'};
   --m3-primary:{v('primary')};
@@ -154,15 +175,23 @@ def material_css(mood: str, selector: str = ":root") -> str:
   --m3-secondary:{v('secondary')};
   --m3-on-secondary:{v('on-secondary')};
   --m3-secondary-container:{v('secondary-container')};
+  --m3-on-secondary-container:{v('on-secondary-container')};
   --m3-tertiary:{v('tertiary')};
   --m3-on-tertiary:{v('on-tertiary')};
   --m3-tertiary-container:{v('tertiary-container')};
+  --m3-on-tertiary-container:{v('on-tertiary-container')};
   --m3-error:{v('error')};
   --m3-on-error:{v('on-error')};
   --m3-error-container:{v('error-container')};
+  --m3-on-error-container:{v('on-error-container')};
   --m3-surface:{v('surface')};
   --m3-surface-dim:{v('surface-dim')};
   --m3-surface-bright:{v('surface-bright')};
+  --m3-surface-container-lowest:{v('surface-container-lowest')};
+  --m3-surface-container-low:{v('surface-container-low')};
+  --m3-surface-container:{v('surface-container')};
+  --m3-surface-container-high:{v('surface-container-high')};
+  --m3-surface-container-highest:{v('surface-container-highest')};
   --m3-surface-lowest:{v('surface-container-lowest')};
   --m3-surface-low:{v('surface-container-low')};
   --m3-surface-c:{v('surface-container')};
@@ -178,10 +207,11 @@ def material_css(mood: str, selector: str = ":root") -> str:
   --m3-shape-xs:10px; --m3-shape-s:14px; --m3-shape-m:20px;
   --m3-shape-l:28px; --m3-shape-full:999px;
   --m3-ease:cubic-bezier(.2,0,0,1);
+  --m3-ease-spring:cubic-bezier(.34,1.4,.4,1);
   --m3-font:'{FONT_FAMILY}',{_FONT_FALLBACK};
-  --m3-shadow-1:0 1px 3px rgba(0,0,0,.3),0 1px 2px rgba(0,0,0,.24);
-  --m3-shadow-2:0 2px 6px rgba(0,0,0,.24),0 1px 4px rgba(0,0,0,.22);
-  --m3-shadow-3:0 6px 14px rgba(0,0,0,.26),0 2px 8px rgba(0,0,0,.20);
+  --m3-shadow-1:{shadow_1};
+  --m3-shadow-2:{shadow_2};
+  --m3-shadow-3:{shadow_3};
 """
 
     return selector + "{\n" + color_block + type_scale + "}\n"
@@ -193,177 +223,246 @@ def components_css(mood: str) -> str:
 
 
 def _COMPONENTS(mood: str, v) -> str:
-    """Shared component styles built on the M3 tokens above."""
-    if mood == "light":
-        hover = "background:rgba(103,80,164,.08);"
-        nav_active_bg = "background:var(--m3-secondary-container); color:var(--m3-on-secondary-container);"
-    else:
-        hover = "background:rgba(208,188,255,.08);"
-        nav_active_bg = "background:var(--m3-secondary-container); color:var(--m3-on-secondary-container);"
+    """Shared component styles built on the M3 tokens above.
 
-    return f"""
-*{{box-sizing:border-box}}
-html,body{{height:100%}}
-body{{
+    All rules reference token *variables* only — never a hard-coded mood — so
+    runtime dark<->light switching re-renders every color. The 2026 Pixel
+    typeface (Google Sans / Product Sans with Roboto Flex fallback) is applied
+    to every textual element via ``--m3-font``.
+    """
+    return """
+* {box-sizing:border-box}
+html,body{height:100%}
+html{scroll-behavior:smooth}
+body{
   margin:0; color:var(--m3-on-surface); font-family:var(--m3-font);
   font-size:14px; line-height:1.65; letter-spacing:.1px;
   -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
   background:var(--m3-surface);
-}}
-a{{color:var(--m3-primary); text-decoration:none}}
-a:hover{{text-decoration:underline}}
-.m3-app-bar{{
-  position:sticky; top:0; z-index:20; backdrop-filter:blur(14px);
-  background:color-mix(in srgb,var(--m3-surface-c) 88%, transparent);
+  transition:background-color .35s var(--m3-ease), color .35s var(--m3-ease);
+}
+body *, body *::before, body *::after{font-family:var(--m3-font)}
+body.theme-anim, body.theme-anim *, body.theme-anim *::before, body.theme-anim *::after{
+  transition:background-color .35s var(--m3-ease), color .35s var(--m3-ease),
+  border-color .35s var(--m3-ease), box-shadow .35s var(--m3-ease) !important;
+}
+a{color:var(--m3-primary); text-decoration:none}
+a:hover{text-decoration:underline}
+::selection{background:var(--m3-primary-container); color:var(--m3-on-primary-container)}
+:focus-visible{outline:2px solid var(--m3-primary); outline-offset:2px; border-radius:8px}
+.m3-app-bar{
+  position:sticky; top:0; z-index:20; backdrop-filter:blur(16px) saturate(1.3);
+  -webkit-backdrop-filter:blur(16px) saturate(1.3);
+  background:color-mix(in srgb,var(--m3-surface-container) 86%, transparent);
   border-bottom:1px solid var(--m3-outline-variant);
-}}
-.m3-app-inner{{max-width:1180px; margin:0 auto; padding:12px 22px; display:flex;
-  align-items:center; gap:16px}}
-.m3-logo{{width:40px; height:40px; border-radius:12px; flex:0 0 auto;
-  background:linear-gradient(135deg,var(--m3-primary),var(--m3-tertiary));
-  color:var(--m3-on-primary); font-weight:800; font-size:15px;
+}
+.m3-app-inner{max-width:1280px; margin:0 auto; padding:12px 22px; display:flex;
+  align-items:center; gap:16px}
+.m3-logo{width:42px; height:42px; border-radius:14px; flex:0 0 auto;
+  background:linear-gradient(135deg,var(--m3-primary) 0%,var(--m3-tertiary) 100%);
+  color:var(--m3-on-primary); font-weight:800; font-size:15px; letter-spacing:-.3px;
   display:flex; align-items:center; justify-content:center;
-  box-shadow:var(--m3-shadow-2)}}
-.m3-title{{font-weight:700; font-size:17px; letter-spacing:-.2px; line-height:1.1}}
-.m3-title small{{display:block; color:var(--m3-on-surface-variant); font-weight:500; font-size:11.5px}}
-.m3-nav{{display:flex; gap:6px; margin-left:auto; flex-wrap:wrap}}
-.m3-nav a{{color:var(--m3-on-surface-variant); padding:9px 14px; border-radius:var(--m3-shape-full);
-  font-weight:600; font-size:13.5px; transition:.15s; white-space:nowrap}}
-.m3-nav a:hover{{ {hover} color:var(--m3-on-surface); text-decoration:none}}
-.m3-nav a.on{{ {nav_active_bg} }}
-.m3-container{{max-width:1180px; margin:0 auto; padding:22px 22px 64px}}
-.m3-h1{{font-size:30px; line-height:1.15; font-weight:750; letter-spacing:-.5px; margin:4px 0 6px}}
-.m3-h2{{font-size:20px; font-weight:700; letter-spacing:-.2px; margin:30px 0 10px;
-  display:flex; align-items:center; gap:10px}}
-.m3-h3{{font-size:15px; font-weight:600; margin:18px 0 6px}}
-.m3-lead{{color:var(--m3-on-surface-variant); font-size:15px; max-width:820px;
-  line-height:1.7; margin:6px 0 18px}}
-.m3-sub{{color:var(--m3-on-surface-variant); font-size:13px}}
-.muted{{color:var(--m3-on-surface-variant)}}
-.m3-card{{
+  box-shadow:var(--m3-shadow-2)}
+.m3-title{font-weight:700; font-size:17px; letter-spacing:-.2px; line-height:1.1}
+.m3-title small{display:block; color:var(--m3-on-surface-variant); font-weight:500; font-size:11.5px}
+.m3-nav{display:flex; gap:6px; margin-left:auto; flex-wrap:wrap}
+.m3-nav a{color:var(--m3-on-surface-variant); padding:9px 14px; border-radius:var(--m3-shape-full);
+  font-weight:600; font-size:13.5px; transition:.18s var(--m3-ease); white-space:nowrap}
+.m3-nav a:hover{background:color-mix(in srgb,var(--m3-primary) 10%, transparent); color:var(--m3-on-surface); text-decoration:none}
+.m3-nav a.on{background:var(--m3-secondary-container); color:var(--m3-on-secondary-container)}
+.m3-container{max-width:1280px; margin:0 auto; padding:22px 22px 64px}
+.m3-h1{font-size:clamp(26px,3.4vw,34px); line-height:1.12; font-weight:750; letter-spacing:-.6px; margin:4px 0 6px}
+.m3-h2{font-size:20px; font-weight:700; letter-spacing:-.2px; margin:30px 0 10px;
+  display:flex; align-items:center; gap:10px}
+.m3-h2::before{content:""; width:4px; height:20px; border-radius:99px;
+  background:linear-gradient(180deg,var(--m3-primary),var(--m3-tertiary)); flex:0 0 auto}
+.m3-h3{font-size:15px; font-weight:600; margin:18px 0 6px}
+.m3-lead{color:var(--m3-on-surface-variant); font-size:15px; max-width:880px;
+  line-height:1.7; margin:6px 0 18px}
+.m3-sub{color:var(--m3-on-surface-variant); font-size:13px}
+.muted{color:var(--m3-on-surface-variant)}
+.m3-card{
   background:var(--m3-surface-container-low); border:1px solid var(--m3-outline-variant);
   border-radius:var(--m3-shape-l); padding:22px 24px; box-shadow:var(--m3-shadow-1);
-  transition:transform .3s var(--m3-ease), box-shadow .3s var(--m3-ease)}}
-.m3-card:hover{{transform:translateY(-2px); box-shadow:var(--m3-shadow-2)}}
-.m3-grid{{display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); margin:16px 0}}
-.m3-kpi{{background:var(--m3-surface-container-low); border:1px solid var(--m3-outline-variant);
-  border-radius:var(--m3-shape-m); padding:18px 20px; box-shadow:var(--m3-shadow-1)}}
-.m3-kpi .v{{font-size:30px; font-weight:780; line-height:1.05; letter-spacing:-.5px}}
-.m3-kpi .l{{color:var(--m3-on-surface-variant); font-size:11px; text-transform:uppercase;
-  letter-spacing:.8px; margin-top:6px; font-weight:600}}
-.m3-table{{
+  transition:transform .3s var(--m3-ease), box-shadow .3s var(--m3-ease), background-color .35s var(--m3-ease), border-color .35s}
+.m3-card:hover{transform:translateY(-2px); box-shadow:var(--m3-shadow-2)}
+.m3-grid{display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); margin:16px 0}
+.m3-kpi{background:var(--m3-surface-container-low); border:1px solid var(--m3-outline-variant);
+  border-radius:var(--m3-shape-m); padding:18px 20px; box-shadow:var(--m3-shadow-1);
+  position:relative; overflow:hidden}
+.m3-kpi::after{content:""; position:absolute; inset:0 0 auto 0; height:3px;
+  background:linear-gradient(90deg,var(--m3-primary),var(--m3-tertiary)); opacity:.85}
+.m3-kpi .v{font-size:30px; font-weight:780; line-height:1.05; letter-spacing:-.5px}
+.m3-kpi .l{color:var(--m3-on-surface-variant); font-size:11px; text-transform:uppercase;
+  letter-spacing:.8px; margin-top:6px; font-weight:600}
+.m3-table{
   width:100%; border-collapse:separate; border-spacing:0; margin:10px 0 4px;
   background:var(--m3-surface-container-low); border:1px solid var(--m3-outline-variant);
-  border-radius:var(--m3-shape-m); overflow:hidden; font-size:13px}}
-.m3-table th,.m3-table td{{text-align:left; padding:12px 14px;
-  border-bottom:1px solid var(--m3-outline-variant); vertical-align:top}}
-.m3-table th{{color:var(--m3-on-surface-variant); text-transform:uppercase;
-  font-size:11px; letter-spacing:.7px; background:var(--m3-surface-container); font-weight:700}}
-.m3-table tbody tr:last-child td{{border-bottom:none}}
-.m3-table tbody tr:hover{{background:{hover}}}
-.m3-chip{{display:inline-flex; align-items:center; gap:6px; background:var(--m3-surface-container-high);
+  border-radius:var(--m3-shape-m); overflow:hidden; font-size:13px; color:var(--m3-on-surface)}
+.m3-table th,.m3-table td{text-align:left; padding:12px 14px;
+  border-bottom:1px solid var(--m3-outline-variant); vertical-align:top; color:var(--m3-on-surface)}
+.m3-table th{color:var(--m3-on-surface-variant); text-transform:uppercase;
+  font-size:11px; letter-spacing:.7px; background:var(--m3-surface-container); font-weight:700}
+.m3-table tbody tr:last-child td{border-bottom:none}
+.m3-table tbody tr:hover{background:color-mix(in srgb,var(--m3-primary) 8%, transparent)}
+.m3-chip{display:inline-flex; align-items:center; gap:6px; background:var(--m3-surface-container-high);
   border:1px solid var(--m3-outline-variant); color:var(--m3-on-surface);
-  border-radius:var(--m3-shape-full); padding:6px 14px; font-size:12.5px; font-weight:600}}
-.m3-chip b{{color:var(--m3-primary); margin-right:3px}}
-.m3-chip-row{{display:flex; gap:8px; flex-wrap:wrap; margin:6px 0}}
-.m3-badge{{background:var(--m3-primary-container); color:var(--m3-on-primary-container);
+  border-radius:var(--m3-shape-full); padding:6px 14px; font-size:12.5px; font-weight:600}
+.m3-chip b{color:var(--m3-primary); margin-right:3px}
+.m3-chip-row{display:flex; gap:8px; flex-wrap:wrap; margin:6px 0}
+.m3-badge{background:var(--m3-primary-container); color:var(--m3-on-primary-container);
   border-radius:var(--m3-shape-xs); padding:3px 10px; font-size:11px; font-weight:800;
-  letter-spacing:.5px; display:inline-block}}
-.m3-badge.on-primary{{background:var(--m3-primary); color:var(--m3-on-primary)}}
-.m3-badge.error{{background:var(--m3-error-container); color:var(--m3-on-error-container)}}
-.m3-btn{{background:var(--m3-primary); color:var(--m3-on-primary); border:none;
+  letter-spacing:.5px; display:inline-block}
+.m3-badge.on-primary{background:var(--m3-primary); color:var(--m3-on-primary)}
+.m3-badge.error{background:var(--m3-error-container); color:var(--m3-on-error-container)}
+.m3-btn{background:var(--m3-primary); color:var(--m3-on-primary); border:none;
   border-radius:20px; padding:14px 26px; font-weight:700; font-size:14px;
-  cursor:pointer; box-shadow:var(--m3-shadow-1); transition:.25s var(--m3-ease); font-family:var(--m3-font)}}
-.m3-btn:hover{{box-shadow:var(--m3-shadow-3); filter:brightness(1.05); transform:translateY(-1px); text-decoration:none; color:var(--m3-on-primary)}}
-.m3-btn:active{{transform:translateY(0) scale(.98)}}
-.m3-btn.tonal{{background:var(--m3-secondary-container); color:var(--m3-on-secondary-container)}}
-.m3-btn.tonal:hover{{color:var(--m3-on-secondary-container)}}
-.m3-btn.outlined{{background:transparent; color:var(--m3-primary);
-  border:1px solid var(--m3-outline)}}
-.m3-btn.outlined:hover{{color:var(--m3-primary)}}
-.m3-fieldlabel{{display:block; font-weight:600; font-size:13px; margin:0 0 6px; color:var(--m3-on-surface)}}
-.m3-hint{{color:var(--m3-on-surface-variant); font-size:12px; line-height:1.55; margin:2px 0 10px}}
-.m3-input{{width:100%; background:var(--m3-surface-container-high); color:var(--m3-on-surface);
+  cursor:pointer; box-shadow:var(--m3-shadow-1); transition:.25s var(--m3-ease); font-family:var(--m3-font)}
+.m3-btn:hover{box-shadow:var(--m3-shadow-3); filter:brightness(1.05); transform:translateY(-1px); text-decoration:none; color:var(--m3-on-primary)}
+.m3-btn:active{transform:translateY(0) scale(.98)}
+.m3-btn:disabled{opacity:.55; cursor:wait; transform:none}
+.m3-btn.tonal{background:var(--m3-secondary-container); color:var(--m3-on-secondary-container)}
+.m3-btn.tonal:hover{color:var(--m3-on-secondary-container)}
+.m3-btn.outlined{background:transparent; color:var(--m3-primary);
+  border:1px solid var(--m3-outline)}
+.m3-btn.outlined:hover{color:var(--m3-primary); background:color-mix(in srgb,var(--m3-primary) 8%, transparent)}
+.m3-fieldlabel{display:block; font-weight:600; font-size:13px; margin:0 0 6px; color:var(--m3-on-surface)}
+.m3-hint{color:var(--m3-on-surface-variant); font-size:12px; line-height:1.55; margin:2px 0 10px}
+.m3-input, select.m3-input, textarea.m3-input{width:100%; background:var(--m3-surface-container-high); color:var(--m3-on-surface);
   border:1px solid var(--m3-outline-variant); border-radius:var(--m3-shape-s);
-  padding:12px 14px; font-size:14px; font-family:inherit; transition:border-color .15s, box-shadow .15s}}
-.m3-input:focus{{outline:none; border-color:var(--m3-primary);
-  box-shadow:0 0 0 4px color-mix(in srgb, var(--m3-primary) 25%, transparent)}}
-textarea.m3-input{{min-height:92px; resize:vertical; line-height:1.55}}
-.m3-field-grid{{display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}}
-.m3-check{{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--m3-on-surface-variant)}}
-.m3-adv{{display:inline-flex; align-items:center; gap:8px; background:none; border:none;
-  color:var(--m3-primary); font-weight:700; font-size:13.5px; cursor:pointer; padding:6px 0; font-family:var(--m3-font)}}
-.m3-divider{{height:1px; background:var(--m3-outline-variant); border:none; margin:22px 0}}
-.m3-footer{{color:var(--m3-on-surface-variant); font-size:12.5px; line-height:1.6;
-  border-top:1px solid var(--m3-outline-variant); padding-top:18px; margin-top:30px}}
-.m3-code{{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px;
-  background:var(--m3-surface-container-high); padding:2px 7px; border-radius:6px}}
-.m3-bartrack{{position:relative; background:var(--m3-surface-container-high);
+  padding:12px 14px; font-size:14px; font-family:var(--m3-font); transition:border-color .15s, box-shadow .15s, background-color .35s, color .35s;
+  color-scheme:dark}
+body.light .m3-input, body[data-theme="light"] .m3-input{color-scheme:light}
+.m3-input::placeholder{color:var(--m3-on-surface-variant); opacity:.75}
+.m3-input:focus{outline:none; border-color:var(--m3-primary);
+  box-shadow:0 0 0 4px color-mix(in srgb, var(--m3-primary) 25%, transparent)}
+textarea.m3-input{min-height:92px; resize:vertical; line-height:1.55}
+.m3-field-grid{display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.m3-check{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--m3-on-surface-variant)}
+.m3-check input{accent-color:var(--m3-primary); width:16px; height:16px}
+.m3-adv{display:inline-flex; align-items:center; gap:8px; background:none; border:none;
+  color:var(--m3-primary); font-weight:700; font-size:13.5px; cursor:pointer; padding:6px 0; font-family:var(--m3-font)}
+.m3-divider{height:1px; background:var(--m3-outline-variant); border:none; margin:22px 0}
+.m3-footer{color:var(--m3-on-surface-variant); font-size:12.5px; line-height:1.6;
+  border-top:1px solid var(--m3-outline-variant); padding-top:18px; margin-top:30px}
+.m3-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px;
+  background:var(--m3-surface-container-high); color:var(--m3-on-surface); padding:2px 7px; border-radius:6px}
+.m3-bartrack{position:relative; background:var(--m3-surface-container-high);
   border:1px solid var(--m3-outline-variant); border-radius:var(--m3-shape-full);
-  height:18px; min-width:150px; overflow:hidden}}
-.m3-bar{{height:18px; border-radius:var(--m3-shape-full);
-  background:linear-gradient(90deg,var(--m3-primary),var(--m3-tertiary))}}
-.m3-barval{{position:absolute; right:8px; top:0; font-size:11px; line-height:18px; color:#fff; font-weight:700}}
-.m3-progress-track{{background:var(--m3-surface-container-high); border:1px solid var(--m3-outline-variant);
-  border-radius:var(--m3-shape-full); height:12px; overflow:hidden}}
-.m3-progress-fill{{height:12px; border-radius:var(--m3-shape-full); width:0%;
+  height:18px; min-width:150px; overflow:hidden}
+.m3-bar{height:18px; border-radius:var(--m3-shape-full);
+  background:linear-gradient(90deg,var(--m3-primary),var(--m3-tertiary))}
+.m3-barval{position:absolute; right:8px; top:0; font-size:11px; line-height:18px; color:#fff; font-weight:700}
+.m3-progress-track{background:var(--m3-surface-container-high); border:1px solid var(--m3-outline-variant);
+  border-radius:var(--m3-shape-full); height:12px; overflow:hidden}
+.m3-progress-fill{height:12px; border-radius:var(--m3-shape-full); width:0%;
   background:linear-gradient(90deg,var(--m3-primary),var(--m3-tertiary));
-  transition:width .45s ease; box-shadow:0 0 12px color-mix(in srgb,var(--m3-primary) 60%,transparent)}}
-.m3-progress-block{{margin:16px 0 4px}}
-.m3-barlabel{{display:flex; justify-content:space-between; font-size:12.5px; color:var(--m3-on-surface-variant);
-  margin-bottom:8px; font-weight:600; letter-spacing:.3px}}
-.m3-console{{background:var(--m3-surface-container-high); border:1px solid var(--m3-outline-variant);
+  transition:width .45s ease; box-shadow:0 0 12px color-mix(in srgb,var(--m3-primary) 60%,transparent)}
+.m3-progress-block{margin:16px 0 4px}
+.m3-barlabel{display:flex; justify-content:space-between; font-size:12.5px; color:var(--m3-on-surface-variant);
+  margin-bottom:8px; font-weight:600; letter-spacing:.3px}
+.m3-console{background:var(--m3-surface-container-highest); border:1px solid var(--m3-outline-variant);
   border-radius:var(--m3-shape-m); padding:14px 16px; height:240px; overflow:auto;
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px;
-  color:var(--m3-primary); line-height:1.55; box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}}
-.m3-issue{{border-radius:var(--m3-shape-m); padding:14px 17px;
+  color:var(--m3-on-surface); line-height:1.55}
+.m3-console .log-err{color:var(--m3-error)}
+.m3-console .log-ok{color:var(--m3-tertiary)}
+.m3-issue{border-radius:var(--m3-shape-m); padding:14px 17px;
   background:var(--m3-surface-container-low); border:1px solid var(--m3-outline-variant);
-  box-shadow:var(--m3-shadow-1)}}
-.feat-list{{display:grid; gap:16px; margin:16px 0}}
-.feat{{display:grid; grid-template-columns:60px 1fr; gap:18px; background:var(--m3-surface-container-low);
+  box-shadow:var(--m3-shadow-1)}
+.feat-list{display:grid; gap:16px; margin:16px 0}
+.feat{display:grid; grid-template-columns:60px 1fr; gap:18px; background:var(--m3-surface-container-low);
   border:1px solid var(--m3-outline-variant); border-radius:var(--m3-shape-m);
-  padding:20px 22px; box-shadow:var(--m3-shadow-1)}}
-.feat-num{{width:58px; height:58px; border-radius:var(--m3-shape-m); background:var(--m3-primary-container);
+  padding:20px 22px; box-shadow:var(--m3-shadow-1)}
+.feat-num{width:58px; height:58px; border-radius:var(--m3-shape-m); background:var(--m3-primary-container);
   color:var(--m3-on-primary-container); font-weight:800; font-size:22px; display:flex; align-items:center;
-  justify-content:center; box-shadow:var(--m3-shadow-1)}}
-.feat-body h3{{margin:0 0 8px; font-size:16px; font-weight:700; color:var(--m3-on-surface)}}
-.feat-body p{{margin:0 0 8px; color:var(--m3-on-surface-variant); font-size:13.5px; line-height:1.65}}
-.feat-body ul{{margin:0 0 10px; padding-left:18px; color:var(--m3-on-surface-variant); font-size:13px; line-height:1.6}}
-.feat-metrics{{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}}
-table.kv{{width:100%; border-collapse:separate; border-spacing:0; background:var(--m3-surface-container-low);
-  border:1px solid var(--m3-outline-variant); border-radius:var(--m3-shape-m); overflow:hidden; font-size:13px}}
-table.kv td{{padding:11px 14px; border-bottom:1px solid var(--m3-outline-variant); vertical-align:top}}
-table.kv tr:last-child td{{border-bottom:none}}
-table.kv td:first-child{{color:var(--m3-on-surface-variant); width:46%; background:var(--m3-surface-container);
-  font-weight:600}}
-.verify-card{{border-radius:var(--m3-shape-m); border:1px solid var(--m3-outline-variant); padding:18px 20px; margin:14px 0;
-  background:var(--m3-surface-container-low); box-shadow:var(--m3-shadow-1)}}
-.verify-card.ok{{border-color:var(--m3-tertiary)}}
-.verify-card.partial{{border-color:#FBBF24}}
-.verify-head{{display:flex; align-items:center; gap:12px; margin-bottom:14px; font-weight:700; color:var(--m3-on-surface)}}
-.verify-badge{{background:var(--m3-primary); color:var(--m3-on-primary); border-radius:var(--m3-shape-xs);
-  padding:5px 13px; font-size:12px; font-weight:800}}
-.verify-card.partial .verify-badge{{background:var(--m3-tertiary-container); color:var(--m3-on-tertiary-container)}}
-.verify-note{{color:var(--m3-on-surface-variant); font-size:12.5px; line-height:1.6; margin:10px 0 0}}
-.dl-row{{display:flex; gap:10px; flex-wrap:wrap; margin-top:14px}}
-.dl{{background:var(--m3-secondary-container); color:var(--m3-on-secondary-container); text-decoration:none;
+  justify-content:center; box-shadow:var(--m3-shadow-1)}
+.feat-body h3{margin:0 0 8px; font-size:16px; font-weight:700; color:var(--m3-on-surface)}
+.feat-body p{margin:0 0 8px; color:var(--m3-on-surface-variant); font-size:13.5px; line-height:1.65}
+.feat-body ul{margin:0 0 10px; padding-left:18px; color:var(--m3-on-surface-variant); font-size:13px; line-height:1.6}
+.feat-metrics{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
+table.kv{width:100%; border-collapse:separate; border-spacing:0; background:var(--m3-surface-container-low);
+  border:1px solid var(--m3-outline-variant); border-radius:var(--m3-shape-m); overflow:hidden; font-size:13px; color:var(--m3-on-surface)}
+table.kv td{padding:11px 14px; border-bottom:1px solid var(--m3-outline-variant); vertical-align:top; color:var(--m3-on-surface)}
+table.kv tr:last-child td{border-bottom:none}
+table.kv td:first-child{color:var(--m3-on-surface-variant); width:46%; background:var(--m3-surface-container);
+  font-weight:600}
+.verify-card{border-radius:var(--m3-shape-m); border:1px solid var(--m3-outline-variant); padding:18px 20px; margin:14px 0;
+  background:var(--m3-surface-container-low); box-shadow:var(--m3-shadow-1)}
+.verify-card.ok{border-color:var(--m3-tertiary)}
+.verify-card.partial{border-color:#E8A317}
+.verify-head{display:flex; align-items:center; gap:12px; margin-bottom:14px; font-weight:700; color:var(--m3-on-surface)}
+.verify-badge{background:var(--m3-primary); color:var(--m3-on-primary); border-radius:var(--m3-shape-xs);
+  padding:5px 13px; font-size:12px; font-weight:800}
+.verify-card.partial .verify-badge{background:var(--m3-tertiary-container); color:var(--m3-on-tertiary-container)}
+.verify-note{color:var(--m3-on-surface-variant); font-size:12.5px; line-height:1.6; margin:10px 0 0}
+.dl-row{display:flex; gap:10px; flex-wrap:wrap; margin-top:14px}
+.dl{background:var(--m3-secondary-container); color:var(--m3-on-secondary-container); text-decoration:none;
   font-weight:700; padding:11px 18px; border-radius:var(--m3-shape-full); font-size:13px;
-  box-shadow:var(--m3-shadow-1); transition:.15s}}
-.dl:hover{{background:var(--m3-primary); color:var(--m3-on-primary); text-decoration:none; transform:translateY(-1px)}}
-.lead{{color:var(--m3-on-surface-variant); font-size:15px; line-height:1.7; margin:6px 0 16px; max-width:860px}}
-.step-wrap{{display:flex; gap:0; align-items:center; margin:6px 0 22px; flex-wrap:wrap}}
-.step{{display:flex; align-items:center; gap:10px; padding:10px 16px; border-radius:var(--m3-shape-full);
+  box-shadow:var(--m3-shadow-1); transition:.15s}
+.dl:hover{background:var(--m3-primary); color:var(--m3-on-primary); text-decoration:none; transform:translateY(-1px)}
+.lead{color:var(--m3-on-surface-variant); font-size:15px; line-height:1.7; margin:6px 0 16px; max-width:880px}
+.step-wrap{display:flex; gap:0; align-items:center; margin:6px 0 22px; flex-wrap:wrap}
+.step{display:flex; align-items:center; gap:10px; padding:10px 16px; border-radius:var(--m3-shape-full);
   background:var(--m3-surface-container); border:1px solid var(--m3-outline-variant);
-  color:var(--m3-on-surface-variant); font-weight:600; font-size:13px}}
-.step .num{{width:24px; height:24px; border-radius:50%; display:flex; align-items:center;
+  color:var(--m3-on-surface-variant); font-weight:600; font-size:13px; cursor:pointer; transition:.2s var(--m3-ease)}
+.step .num{width:24px; height:24px; border-radius:50%; display:flex; align-items:center;
   justify-content:center; background:var(--m3-surface-container-high); border:1px solid var(--m3-outline-variant);
-  font-size:12px; font-weight:800}}
-.step.active{{border-color:var(--m3-primary); color:var(--m3-on-surface)}}
-.step.active .num{{background:var(--m3-primary); color:var(--m3-on-primary); border-color:transparent}}
-.step.done .num{{background:var(--m3-secondary-container); color:var(--m3-on-secondary-container)}}
-.step-sep{{flex:1 1 24px; height:2px; min-width:24px; background:var(--m3-outline-variant); margin:0 8px}}
-.page{{display:none}}
-.page.active{{display:block}}
+  font-size:12px; font-weight:800}
+.step.active{border-color:var(--m3-primary); color:var(--m3-on-surface); box-shadow:var(--m3-shadow-1)}
+.step.active .num{background:var(--m3-primary); color:var(--m3-on-primary); border-color:transparent}
+.step.done{border-color:var(--m3-tertiary)}
+.step.done .num{background:var(--m3-secondary-container); color:var(--m3-on-secondary-container)}
+.step-sep{flex:1 1 24px; height:2px; min-width:24px; background:var(--m3-outline-variant); margin:0 8px}
+.page{display:none}
+.page.active{display:block; animation:pageIn .45s var(--m3-ease)}
+@keyframes pageIn{from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none}}
+iframe.ent-frame{width:100%; height:82vh; border:1px solid var(--m3-outline-variant);
+  border-radius:var(--m3-shape-m); background:var(--m3-surface-container-lowest); box-shadow:var(--m3-shadow-2);
+  color-scheme:dark}
+body.light iframe.ent-frame, body[data-theme="light"] iframe.ent-frame{color-scheme:light}
+@media (max-width:760px){
+  .m3-app-inner{flex-wrap:wrap}
+  .m3-nav{margin-left:0}
+  .feat{grid-template-columns:1fr}
+  .feat-num{width:48px; height:48px}
+}
+@media (prefers-reduced-motion:reduce){
+  *, *::before, *::after{animation-duration:.001s !important; transition-duration:.001s !important}
+  html{scroll-behavior:auto}
+}
+/* ---- severity issue cards: bold, theme-safe highlighting ---- */
+.iss-wrap{margin:14px 0 6px}
+.iss-head{display:flex; align-items:center; gap:10px; font-weight:800; font-size:15px;
+  letter-spacing:-.2px; color:var(--m3-on-surface); margin:0 0 10px}
+.iss-count{background:var(--m3-error); color:var(--m3-on-error); font-size:11px; font-weight:800;
+  min-width:22px; height:22px; border-radius:99px; display:inline-flex; align-items:center;
+  justify-content:center; padding:0 6px}
+.iss{display:flex; gap:12px; align-items:flex-start; border-radius:var(--m3-shape-m);
+  padding:13px 16px; margin:0 0 10px; border:1px solid var(--m3-outline-variant);
+  border-left-width:6px; box-shadow:var(--m3-shadow-1); background:var(--m3-surface-container-low)}
+.iss-critical{background:color-mix(in srgb, var(--m3-error-container) 42%, var(--m3-surface-container-low));
+  border-color:var(--m3-error); border-left-color:var(--m3-error)}
+.iss-high{background:color-mix(in srgb, #E8A317 16%, var(--m3-surface-container-low));
+  border-color:#E8A317; border-left-color:#E8A317}
+.iss-medium{background:color-mix(in srgb, var(--m3-tertiary-container) 45%, var(--m3-surface-container-low));
+  border-color:var(--m3-tertiary); border-left-color:var(--m3-tertiary)}
+.iss-good{background:color-mix(in srgb, var(--m3-primary-container) 45%, var(--m3-surface-container-low));
+  border-color:var(--m3-primary); border-left-color:var(--m3-primary)}
+.iss-body{display:flex; flex-direction:column; gap:3px; font-size:13px; line-height:1.55;
+  color:var(--m3-on-surface)}
+.iss-body b{font-size:13.5px}
+.iss-body span{color:var(--m3-on-surface-variant)}
+.sev{flex:0 0 auto; font-size:10px; font-weight:800; letter-spacing:.7px; padding:4px 10px;
+  border-radius:8px; margin-top:1px; white-space:nowrap}
+.sev-critical{background:var(--m3-error); color:var(--m3-on-error)}
+.sev-high{background:#E8A317; color:#1D1B20}
+.sev-medium{background:var(--m3-tertiary-container); color:var(--m3-on-tertiary-container)}
+.sev-good{background:var(--m3-primary-container); color:var(--m3-on-primary-container)}
+tr.row-critical td{background:color-mix(in srgb, var(--m3-error-container) 38%, transparent) !important;
+  font-weight:600}
+tr.row-high td{background:color-mix(in srgb, #E8A317 14%, transparent) !important}
+tr.row-good td{background:color-mix(in srgb, var(--m3-primary-container) 38%, transparent) !important}
 """
 
 
@@ -390,9 +489,15 @@ body{color:var(--m3-on-surface); background:
 """
         return font + "\n" + dark_tokens + "\n" + components + "\n" + body_theme
 
-    # webapp: dark :root tokens + light palette scoped to body.light for runtime
-    # theme toggle. Component styles are emitted once (they reference token vars).
-    light_tokens = material_css("light", selector="body.light")
+    # webapp: dark :root tokens + light palette scoped to body.light AND
+    # body[data-theme="light"] for runtime theme toggle. Component styles are
+    # emitted once (they reference token vars). Both selectors carry the full
+    # light palette so every color re-renders correctly on mode change.
+    light_tokens = (
+        material_css("light", selector='body.light')
+        + "\n"
+        + material_css("light", selector='body[data-theme="light"]')
+    )
     body_theme = """
 body{color:var(--m3-on-surface); background:
   radial-gradient(1200px 600px at 12% -12%, color-mix(in srgb,var(--m3-primary) 16%, transparent), transparent 60%),

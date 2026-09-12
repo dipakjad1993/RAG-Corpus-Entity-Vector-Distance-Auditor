@@ -60,6 +60,101 @@ def _round(x: Any, nd: int = 3) -> str:
         return "&mdash;"
 
 
+def _brand_l(cfg: Dict) -> str:
+    return str(cfg.get("target_brand", "") or "").lower()
+
+
+def _num_or_none(x: Any) -> float | None:
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+
+def _classes_for_prox(rows: List[Dict], brand: str) -> List[str]:
+    """Brand far/unrelated rows glow amber; tightly-bound brand rows glow green."""
+    out = []
+    for r in rows:
+        lab = str(r.get("label", "")).lower()
+        if str(r.get("entity", "")).lower() == brand and brand:
+            if "far" in lab or "unrelated" in lab:
+                out.append("row-high")
+            elif "tight" in lab:
+                out.append("row-good")
+            else:
+                out.append("")
+        else:
+            out.append("")
+    return out
+
+
+def _classes_for_gap(gaps: List[Dict]) -> List[str]:
+    out = []
+    for g in gaps:
+        sev = str(g.get("severity", "")).lower()
+        out.append("row-critical" if "critical" in sev else
+                   ("row-high" if "high" in sev else ""))
+    return out
+
+
+def _classes_for_inv(per_topic: List[Dict]) -> List[str]:
+    out = []
+    for t in per_topic:
+        v = _num_or_none(t.get("topic_invisibility_pct")) or 0
+        out.append("row-critical" if v >= 70 else ("row-high" if v >= 40 else ""))
+    return out
+
+
+def _classes_for_ledger(ent_sum: List[Dict], brand: str) -> List[str]:
+    out = []
+    for e in ent_sum:
+        if str(e.get("entity", "")).lower() == brand and brand:
+            tot = int(e.get("docs_total", 0) or 0) or 1
+            om = int(e.get("docs_omitted", 0) or 0)
+            unl = int(e.get("docs_unlinked", 0) or 0)
+            out.append("row-high" if (om / tot >= 0.7 or unl > 0) else "")
+        else:
+            out.append("")
+    return out
+
+
+def _classes_for_sent(per_entity: List[Dict]) -> List[str]:
+    out = []
+    for e in per_entity:
+        risks = int(e.get("risk_windows", 0) or 0)
+        net = _num_or_none(e.get("net_sentiment"))
+        if risks > 0 or (net is not None and net < 0):
+            out.append("row-critical")
+        elif "negative" in str(e.get("framing", "")).lower():
+            out.append("row-high")
+        else:
+            out.append("")
+    return out
+
+
+def _classes_for_drift(per_topic: List[Dict]) -> List[str]:
+    return ["row-high" if t.get("anomaly") else "" for t in per_topic]
+
+
+def _classes_for_density(per_topic: List[Dict]) -> List[str]:
+    out = []
+    for t in per_topic:
+        sev = str(t.get("severity", "")).lower()
+        need = _num_or_none(t.get("tokens_needed_to_displace")) or 0
+        out.append("row-critical" if "critical" in sev else
+                   ("row-high" if ("high" in sev or need >= 30) else ""))
+    return out
+
+
+def _classes_for_recs(recs: List[Dict]) -> List[str]:
+    out = []
+    for r in recs:
+        pri = str(r.get("priority", "")).lower()
+        out.append("row-critical" if ("p0" in pri or "critical" in pri) else
+                   ("row-high" if ("p1" in pri or "high" in pri) else ""))
+    return out
+
+
 def _bar(pct_val: float, width: int = 120) -> str:
     """Render a small colored bar for a percentage."""
     p = max(0, min(100, float(pct_val or 0)))
@@ -70,17 +165,25 @@ def _bar(pct_val: float, width: int = 120) -> str:
             f' <span style="font-size:11px;color:var(--m3-on-surface-variant)">{p:.1f}%</span>')
 
 
-def _t(rows: List[List[str]], cls: str = "m3-table") -> str:
-    """Render a <table> from header + data rows. First row = header."""
+def _t(rows: List[List[str]], cls: str = "m3-table",
+       row_classes: List[str] | None = None) -> str:
+    """Render a <table> from header + data rows. First row = header.
+
+    ``row_classes`` optionally holds one CSS class per body row (e.g.
+    "row-critical" / "row-high" / "row-good") so problem rows are boldly
+    highlighted in both dark and light modes.
+    """
     if not rows:
         return "<p class='muted'>No data.</p>"
     hdr = rows[0]
     body_rows = rows[1:]
     ths = "".join(f"<th>{c}</th>" for c in hdr)
     trs = ""
-    for r in body_rows:
+    for idx, r in enumerate(body_rows):
         tds = "".join(f"<td>{c}</td>" for c in r)
-        trs += f"<tr>{tds}</tr>"
+        rc = (row_classes[idx] if row_classes and idx < len(row_classes)
+              and row_classes[idx] else "")
+        trs += f"<tr class='{rc}'>{tds}</tr>" if rc else f"<tr>{tds}</tr>"
     return f'<table class="{cls}"><thead><tr>{ths}</tr></thead><tbody>{trs}</tbody></table>'
 
 
@@ -113,6 +216,15 @@ def _wrap(job_id: str, current: str, title: str, body: str) -> str:
         f'{_nav(job_id, current)}'
         f'{body}'
     )
+
+
+def _engine_banner(data: Dict, engine: str) -> str:
+    """Bold color-coded issue cards for one engine (empty when all clear)."""
+    try:
+        from . import issues as _issues
+        return _issues.banner_html(_issues.collect_issues(data), engine=engine)
+    except Exception:  # noqa: BLE001 — highlighting must never break a page
+        return ""
 
 
 # ---------------------------------------------------------------------------
@@ -285,9 +397,9 @@ def web_harvester(data: Dict, job_id: str) -> str:
     </div>
     """
 
-    return _wrap(job_id, "1",
+    return _wrap(job_id, "web_harvester",
                  "Engine 1: Zero-Cost Headless Web Harvester — Full Analysis",
-                 harvest_detail)
+                 _engine_banner(data, "web_harvester") + harvest_detail)
 
 
 # ---------------------------------------------------------------------------
@@ -427,12 +539,12 @@ def vector_embedding(data: Dict, job_id: str) -> str:
 
     <div class="card" style="margin:14px 0">
       <h3 style="margin:0 0 10px;font-size:16px;font-weight:700">Full Proximity Score Matrix ({_num(len(rows))} comparisons)</h3>
-      {_t(prox_table)}
+      {_t(prox_table, row_classes=_classes_for_prox(rows, _brand_l(cfg)))}
     </div>
 
     <div class="card" style="margin:14px 0">
       <h3 style="margin:0 0 10px;font-size:16px;font-weight:700">Proximity Gaps ({_num(len(gaps))} topic gaps)</h3>
-      {_t(gap_table)}
+      {_t(gap_table, row_classes=_classes_for_gap(gaps))}
     </div>
 
     <div class="card" style="margin:14px 0">
@@ -449,9 +561,9 @@ def vector_embedding(data: Dict, job_id: str) -> str:
     </div>
     """
 
-    return _wrap(job_id, "2",
+    return _wrap(job_id, "vector_embedding",
                  "Engine 2: Local Vector Embedding & Semantic Mapping — Full Analysis",
-                 embedding_detail)
+                 _engine_banner(data, "vector_embedding") + embedding_detail)
 
 
 # ---------------------------------------------------------------------------
@@ -564,7 +676,7 @@ def ner_graphs(data: Dict, job_id: str) -> str:
 
     <div class="card" style="margin:14px 0">
       <h3 style="margin:0 0 10px;font-size:16px;font-weight:700">Entity Citation Summary ({_num(len(ent_sum))} entities)</h3>
-      {_t(ent_table)}
+      {_t(ent_table, row_classes=_classes_for_ledger(ent_sum, _brand_l(cfg)))}
     </div>
 
     <div class="card" style="margin:14px 0">
@@ -577,9 +689,9 @@ def ner_graphs(data: Dict, job_id: str) -> str:
     </div>
     """
 
-    return _wrap(job_id, "3",
+    return _wrap(job_id, "ner_graphs",
                  "Engine 3: Local NER & Knowledge Graphs — Full Analysis",
-                 ner_detail)
+                 _engine_banner(data, "ner_graphs") + ner_detail)
 
 
 # ---------------------------------------------------------------------------
@@ -639,7 +751,7 @@ def citation_gap(data: Dict, job_id: str) -> str:
       <div class="m3-grid" style="grid-template-columns:repeat(4,1fr)">
         <div class="m3-kpi"><div class="v" style="color:var(--m3-error)">{_round(cite.get('rag_invisibility_index'))}</div>
           <div class="l">RAG Invisibility Index</div></div>
-        <div class="m3-kpi"><div class="v" style="color:#FBBF24">{_round(inv.get('composite_invisibility_index_pct'))}%</div>
+        <div class="m3-kpi"><div class="v" style="color:var(--m3-tertiary)">{_round(inv.get('composite_invisibility_index_pct'))}%</div>
           <div class="l">Composite Invisibility %</div></div>
         <div class="m3-kpi"><div class="v" style="color:var(--m3-tertiary)">{_round(inv.get('composite_vector_share_of_voice_pct'))}%</div>
           <div class="l">Vector Share of Voice</div></div>
@@ -683,7 +795,7 @@ def citation_gap(data: Dict, job_id: str) -> str:
 
     <div class="card" style="margin-top:14px">
       <h3 style="margin:0 0 10px;font-size:16px;font-weight:700">Per-Topic Invisibility Breakdown</h3>
-      {_t(inv_table)}
+      {_t(inv_table, row_classes=_classes_for_inv(per_topic))}
     </div>
 
     <div class="card" style="margin:14px 0">
@@ -699,13 +811,13 @@ def citation_gap(data: Dict, job_id: str) -> str:
       <p style="font-size:12px;color:var(--m3-on-surface-variant);margin:0 0 8px">
         Prioritized directives based on the citation gap analysis. P1 = critical
         (immediate action needed), P2 = high priority, P3 = medium priority.</p>
-      {_t(rec_table)}
+      {_t(rec_table, row_classes=_classes_for_recs(recs))}
     </div>
     """
 
-    return _wrap(job_id, "4",
+    return _wrap(job_id, "citation_gap",
                  "Engine 4: Citation Gap & Invisibility Index — Full Analysis",
-                 citation_detail)
+                 _engine_banner(data, "citation_gap") + citation_detail)
 
 
 # ---------------------------------------------------------------------------
@@ -813,9 +925,9 @@ def chunking_engine(data: Dict, job_id: str) -> str:
     </div>
     """
 
-    return _wrap(job_id, "5",
+    return _wrap(job_id, "chunking",
                  "Engine 5: RAG Chunking & Contextual Window Simulator — Full Analysis",
-                 chunk_detail)
+                 _engine_banner(data, "chunking") + chunk_detail)
 
 
 # ---------------------------------------------------------------------------
@@ -902,7 +1014,7 @@ def drift_tracking(data: Dict, job_id: str) -> str:
 
     <div class="card" style="margin-top:14px">
       <h3 style="margin:0 0 10px;font-size:16px;font-weight:700">Per-Topic Drift Analysis</h3>
-      {_t(drift_table)}
+      {_t(drift_table, row_classes=_classes_for_drift(per_topic))}
     </div>
     """
 
@@ -911,7 +1023,7 @@ def drift_tracking(data: Dict, job_id: str) -> str:
     <div class="card" style="margin:14px 0;border-color:var(--m3-error)">
       <h3 style="margin:0 0 10px;font-size:16px;font-weight:700;color:var(--m3-error)">
         ⚠ Drift Alerts ({_num(len(alerts))})</h3>
-      {_t(alert_table)}
+      {_t(alert_table, row_classes=["row-high"] * len(alerts))}
     </div>"""
     else:
         drift_detail += """
@@ -924,9 +1036,9 @@ def drift_tracking(data: Dict, job_id: str) -> str:
         for drift detection.</p>
     </div>"""
 
-    return _wrap(job_id, "6",
+    return _wrap(job_id, "drift_tracking",
                  "Engine 6: Semantic Drift Tracking & Time-Series DB — Full Analysis",
-                 drift_detail)
+                 _engine_banner(data, "drift_tracking") + drift_detail)
 
 
 # ---------------------------------------------------------------------------
@@ -1020,9 +1132,9 @@ def llm_analysis(data: Dict, job_id: str) -> str:
       </ol>
     </div>"""
 
-    return _wrap(job_id, "7",
+    return _wrap(job_id, "llm_analysis",
                  "Engine 7: Local LLM Summarization & Gap Analysis — Full Analysis",
-                 llm_detail)
+                 _engine_banner(data, "llm_analysis") + llm_detail)
 
 
 # ---------------------------------------------------------------------------
@@ -1107,7 +1219,7 @@ def sentiment_audit(data: Dict, job_id: str) -> str:
 
     <div class="card" style="margin:14px 0">
       <h3 style="margin:0 0 10px;font-size:16px;font-weight:700">Per-Entity Sentiment Scores ({_num(len(per_entity))} entities)</h3>
-      {_t(ent_table)}
+      {_t(ent_table, row_classes=_classes_for_sent(per_entity))}
     </div>
     """
 
@@ -1120,7 +1232,7 @@ def sentiment_audit(data: Dict, job_id: str) -> str:
         These retrieval windows contain entity mentions with negative sentiment
         context. If an LLM retrieves these chunks, it will propagate the negative
         framing into its generated answer.</p>
-      {_t(risk_table)}
+      {_t(risk_table, row_classes=["row-critical"] * len(risk_windows))}
     </div>"""
     else:
         sent_detail += """
@@ -1133,9 +1245,9 @@ def sentiment_audit(data: Dict, job_id: str) -> str:
         (zero mentions = zero risk windows) or that all mentions are neutral/positive.</p>
     </div>"""
 
-    return _wrap(job_id, "8",
+    return _wrap(job_id, "sentiment",
                  "Engine 8: RAG Chunk Hallucination & Sentiment Auditor — Full Analysis",
-                 sent_detail)
+                 _engine_banner(data, "sentiment") + sent_detail)
 
 
 # ---------------------------------------------------------------------------
@@ -1211,9 +1323,9 @@ def synthetic_queries(data: Dict, job_id: str) -> str:
     </div>
     """
 
-    return _wrap(job_id, "9",
+    return _wrap(job_id, "synthetic_queries",
                  "Engine 9: Synthetic Query Generator (Reverse-Engineer RAG) — Full Analysis",
-                 syn_detail)
+                 _engine_banner(data, "synthetic_queries") + syn_detail)
 
 
 # ---------------------------------------------------------------------------
@@ -1307,7 +1419,7 @@ def token_density(data: Dict, job_id: str) -> str:
 
     <div class="card" style="margin:14px 0">
       <h3 style="margin:0 0 10px;font-size:16px;font-weight:700">Per-Topic Density Analysis ({_num(len(per_topic))} topics)</h3>
-      {_t(density_table)}
+      {_t(density_table, row_classes=_classes_for_density(per_topic))}
     </div>
 
     <div class="card" style="margin:14px 0">
@@ -1319,9 +1431,9 @@ def token_density(data: Dict, job_id: str) -> str:
     </div>
     """
 
-    return _wrap(job_id, "10",
+    return _wrap(job_id, "token_density",
                  "Engine 10: Automated Token Density Adjuster — Full Analysis",
-                 density_detail)
+                 _engine_banner(data, "token_density") + density_detail)
 
 
 # ---------------------------------------------------------------------------
@@ -1389,6 +1501,20 @@ def render_all(job_id: str, data: Dict) -> str:
     # 1) The narrative summary block (methodology + verification)
     summary = _narr.features_html(data, job_id)
 
+    # 1b) Run-global issue summary: bold color-coded problems first so an
+    # executive sees every red flag before scrolling a single engine.
+    try:
+        from . import issues as _issues
+
+        _all_issues = _issues.collect_issues(data)
+        _issues_head = (
+            '<h2 class="m3-h2" style="margin-top:6px">Issues requiring attention</h2>'
+            + _issues.summary_strip_html(_all_issues)
+            + _issues.banner_html(_all_issues, engine=None, limit=8)
+        )
+    except Exception:  # noqa: BLE001 — highlighting must never break a page
+        _issues_head = ""
+
     # 2) In-page jump nav across all engines
     jump = '<div style="display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 4px">'
     for key, num, _label in _ALL_SECTIONS:
@@ -1421,6 +1547,7 @@ def render_all(job_id: str, data: Dict) -> str:
 
     return (
         '<div class="narrative">'
+        + _issues_head
         + summary
         + '<h2 class="m3-h2" style="margin-top:34px">Jump to a full engine breakdown</h2>'
         + jump

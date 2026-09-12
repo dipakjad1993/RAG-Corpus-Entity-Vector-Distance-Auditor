@@ -4,7 +4,7 @@
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 ![Local-only](https://img.shields.io/badge/LLM-100%25%20local-orange)
-![Version](https://img.shields.io/badge/version-1.2.0-black)
+![Version](https://img.shields.io/badge/version-1.3.0-black)
 
 > **A zero-cost, fully-local intelligence engine that decodes how modern AI search
 > engines (Gemini, SearchGPT, Google AI Overviews, Perplexity, Bing Copilot)
@@ -21,6 +21,31 @@ competitors — with **zero OpenAI / Ahrefs / Semrush / BrightEdge API keys** an
 | | | |
 |---|---|---|
 | 📄 **125 docs** audited in the reference Guardian run | 💰 **$0** API cost, forever | 📦 **22 output files** per run (JSON/CSV/HTML/PDF/DuckDB) |
+
+### ✨ What's new in v1.3.0 — Enterprise experience release
+
+- **Enterprise 2026 web UI** — gradient hero with live detection stats, bento
+  input grid for all 11 fields, clickable 3-step flow
+  (Inputs → Deep Analysis → Outputs), sticky run bar with an explicit
+  **📊 Show Outputs** action, skeleton loaders, toasts, and percent/elapsed
+  progress with color-coded live logs. Pixel-first type
+  (`Google Sans` → bundled Roboto Flex) with a fully working dark/light toggle.
+- **Deep-research Auto-Detect** — paste any brand or URL and the tool performs
+  live multi-source reconnaissance (homepage + robots/sitemap/about/services/
+  blog/news, JSON-LD, live topic/competitor/HQ searches, Wikipedia check) and
+  pre-fills **all 11 enterprise inputs** with verified real-time data.
+- **Issue highlighting everywhere** — every engine is scanned for real computed
+  problems and surfaced as bold **CRITICAL / HIGH RISK / WATCH / STRENGTH**
+  cards: a global summary on Step 2, per-engine banners on all 10 deep-dive
+  pages, and red/amber/green flagged rows in every key table.
+- **Enterprise PDF** (`report.pdf`, ~17 pages) — cover page with KPI cards,
+  captioned charts, per-section tinted issue callouts, color-coded metric
+  cells, the complete analysis of all 10 engines, and the full outputs ledger.
+  Stale cached PDFs self-heal: the server rebuilds any PDF older than the
+  generator on next download.
+- **Outputs hub (Step 3)** — 12-section verified report with executive verdict,
+  competitive leaderboard, full proximity/citation/off-page/action tables,
+  and all 15 deliverable downloads.
 
 ### Try it in 30 seconds (offline, no network)
 
@@ -68,7 +93,8 @@ guidelines, and the project's About + tags.**
 ## 📚 Table of Contents
 
 1. [Why it exists](#why-it-exists)
-2. [What problem it solves](#what-problem-it-solves)
+2. [✨ What's new in v1.3.0](#-whats-new-in-v130--enterprise-experience-release)
+3. [What problem it solves](#what-problem-it-solves)
 3. [Architecture — four local micro-engines](#architecture--four-local-micro-engines)
 4. [Feature summary table](#feature-summary-table)
 5. [Installation](#installation)
@@ -246,7 +272,7 @@ python -c "from sentence_transformers import SentenceTransformer; SentenceTransf
 python -c "from transformers import AutoTokenizer, AutoModelForSequenceClassification; AutoTokenizer.from_pretrained('cardiffnlp/twitter-roberta-base-sentiment-latest'); AutoModelForSequenceClassification.from_pretrained('cardiffnlp/twitter-roberta-base-sentiment-latest')"
 
 # 5. verify
-python -m ragevda.cli --version   # → ragevda 1.2.0
+python -m ragevda.cli --version   # → ragevda 1.3.0
 ```
 
 > **Resilience guarantee.** If you request an embedding or NER model that is not
@@ -287,8 +313,24 @@ python -m ragevda.cli history --brand "YourBrand" --jobs-dir web_output/jobs
 
 ```bash
 python -m ragevda.cli web --port 9000
-# opens http://127.0.0.1:9000  (a clean, premium, self-contained UI)
+# opens http://127.0.0.1:9000  (enterprise Material 3 UI, dark + light modes)
 ```
+
+The web UI runs a 3-step flow — **Inputs → Deep Analysis → Outputs**:
+
+- **Step 1 · Inputs.** Paste a brand **or any website URL** and hit
+  **🔍 Auto-Detect Deep Research**: the tool fetches the live site, scans
+  discovery endpoints, runs budgeted live searches, and pre-fills **all 11
+  configuration inputs** (topics, competitors, crawl depth, locality, intent +
+  query templates, entity weighting/ontology, ground-truth paths, embedding
+  model, SERP footprints, content feeds) with verified real-time data.
+- **Step 2 · Deep Analysis.** **▶ Run Full Audit** executes all 10
+  micro-engines with live progress, then opens the in-depth analysis: a global
+  **Issues requiring attention** summary (CRITICAL / HIGH RISK / WATCH /
+  STRENGTH), methodology + verification, and every engine's full computed
+  detail with problem rows highlighted in red/amber/green.
+- **Step 3 · Outputs.** **📊 Show Outputs** compiles the 12-section verified
+  report (KPIs, leaderboard, full tables, downloads).
 
 The web UI exposes **11 configuration inputs** on one form:
 
@@ -615,7 +657,7 @@ Every audit writes a self-contained folder (e.g. `ragevda_output/` or
 | `synthetic_retrieval_queries.csv` | CSV | Reverse-engineered retrieval prompts + confidence. |
 | `corpus.duckdb` | DB | The full local vector/corpus store (SQL-queryable, $0). |
 | `drift_timeseries.duckdb` | DB | Persistent cross-run time-series for drift. |
-| `report.pdf` | PDF | (web UI) a downloadable PDF rendering of the report. |
+| `report.pdf` | PDF | (web UI) a **~17-page enterprise report**: cover + KPI cards, captioned charts, per-section issue callouts, color-coded cells, all 10 engines and the full outputs ledger. Served from `web_output/jobs/<…>/`; stale copies auto-regenerate on download. |
 
 ---
 
@@ -624,7 +666,7 @@ Every audit writes a self-contained folder (e.g. `ragevda_output/` or
 ```jsonc
 {
   "meta": {
-    "tool": "RAG-EVDA", "version": "1.2.0", "generated_at": "...Z",
+    "tool": "RAG-EVDA", "version": "1.3.0", "generated_at": "...Z",
     "config": { /* every RunConfig field */ },
     "embedding_kind": "sentence-transformers",
     "embedding_model": "BAAI/bge-small-en-v1.5",
@@ -915,6 +957,8 @@ self-contained, so it can be embedded or served by any static host.
 | `cannot read /docs/corpora/… : No such file` | Your `corpus_files` paths don't exist on this machine | Create those files, or remove them from config. The tool logs this and continues (0 docs from that source). |
 | Many `HTTP 403/401/402` warnings during fetch | Paywalled / bot-blocked sites (Wikipedia, FT, Telegraph, WaPo) | Expected. The tool skips them and only keeps genuinely fetchable pages. |
 | `verification_score` low / `verified: false` | Low support fraction or partial provenance of the harvested corpus | Not a tool failure — it means the run's confidence is honestly low. Improve corpus quality/coverage. |
+| Browser still shows the old UI after updating | The Flask server (`python -m ragevda.cli web`) loads code once at startup — it does not hot-reload | Restart the server process, then hard-refresh (`Ctrl+Shift+R`). The running PID is shown by the OS process list; kill it and re-run the same command. |
+| Downloaded PDF looks like the old layout | A `report.pdf` cached from a previous version was served | Fixed in v1.3.0: the server auto-rebuilds any PDF older than the generator on next download. On older checkouts, delete the job's `report.pdf` and re-download. |
 
 ---
 
@@ -938,7 +982,7 @@ self-contained, so it can be embedded or served by any static host.
 
 ## About
 
-**RAG-EVDA — RAG Corpus Entity & Vector Distance Auditor (v1.2.0)** is a zero-cost,
+**RAG-EVDA — RAG Corpus Entity & Vector Distance Auditor (v1.3.0)** is a zero-cost,
 fully-local intelligence engine for AI-search visibility. It decodes how modern
 generative search engines (Gemini, SearchGPT, Google AI Overviews, Perplexity,
 Bing Copilot) semantically perceive your brand relative to competitors inside a
@@ -946,11 +990,22 @@ retrieval-augmented generation corpus — turning "AI SEO guessing" into exact,
 actionable vector mathematics. No proprietary API keys. No data leaves your
 machine. Every number is real, verifiable, and enterprise-grade — the v1.2.0
 hardening release removed every synthetic fallback and demo fixture so reports
-are built exclusively on live fetches and local ML inference.
+are built exclusively on live fetches and local ML inference, and v1.3.0
+wrapped it in an enterprise-grade experience (2026 UI, issue highlighting,
+full PDF, outputs hub).
 
 ---
 
 ## Changelog
+
+### v1.3.0 — Enterprise experience release
+- **Added:** enterprise 2026 web UI (hero, bento inputs, 3-step flow, Show
+  Outputs, toasts, live progress); deep-research Auto-Detect for all 11
+  inputs; issue-highlighting framework (cards, banners, flagged rows) across
+  all 10 engines; ~17-page enterprise PDF with charts + callouts; 12-section
+  outputs hub; stale-PDF auto-heal on download.
+- **Fixed:** Material 3 light-mode token mismatch; dark-only hardcoded colors.
+- Full details in [`CHANGELOG.md`](CHANGELOG.md).
 
 ### v1.2.0 — Real-data hardening release
 - **Removed all synthetic/demo paths:** TF-IDF/lexicon/char-4 fallbacks now hard-fail
