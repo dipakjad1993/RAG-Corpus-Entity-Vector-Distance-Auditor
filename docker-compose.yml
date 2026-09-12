@@ -1,0 +1,35 @@
+services:
+  web:
+    build: .
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./web_output:/app/web_output
+    environment:
+      HF_HUB_OFFLINE: "1"
+    restart: unless-stopped
+
+  # Full stack: self-hosted search (higher-volume live harvesting).
+  # Run: docker compose --profile full up
+  searxng:
+    image: searxng/searxng:latest
+    profiles: [full]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./deploy/searxng:/etc/searxng:ro
+    restart: unless-stopped
+
+  # Full stack: local LLM rationales (gap analysis, never invents data).
+  # Run: docker compose --profile full up
+  ollama:
+    image: ollama/ollama:latest
+    profiles: [full]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  ollama_data:

@@ -18,7 +18,12 @@ import logging
 from dataclasses import replace as dc_replace
 from typing import Dict, List, Optional
 
+import numpy as np
+
 from .config import RunConfig
+from .harvester.duckduckgo import DuckDuckGoHarvester
+from .harvester.file_reader import FileHarvester
+from .harvester.searxng import SearXNGHarvester
 from .nlp import Embedder, NER, CoOccurrenceGraph
 from .analysis import (
     build_context, analyze_proximity, analyze_citation_gap,
@@ -78,11 +83,7 @@ def _harvest_or_fallback(config, queries, depth) -> tuple:
             h.close()
 
     if kind == "file":
-        return _run_harvester(
-            __import__("ragevda.harvester.file_reader", fromlist=["FileHarvester"]).FileHarvester
-        )
-
-    from .harvester.duckduckgo import DuckDuckGoHarvester
+        return _run_harvester(FileHarvester)
 
     if kind == "searxng":
         reachable = _probe_searxng(config)
@@ -94,9 +95,7 @@ def _harvest_or_fallback(config, queries, depth) -> tuple:
             logger.warning(note)
             docs, stats, _ = _run_harvester(DuckDuckGoHarvester)
             return docs, stats, note
-        docs, stats, _ = _run_harvester(
-            __import__("ragevda.harvester.searxng", fromlist=["SearXNGHarvester"]).SearXNGHarvester
-        )
+        docs, stats, _ = _run_harvester(SearXNGHarvester)
         # Reachable but yielded no pages -> still fall back rather than emit an
         # empty report based on a live-but-empty SERP.
         if not docs:
@@ -274,7 +273,7 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
         store.insert_document(d)
     for doc_id, vecs in ctx.doc_chunk_vecs.items():
         if vecs:
-            store.insert_chunk_embeddings(doc_id, __import__("numpy").stack(vecs, 0))
+            store.insert_chunk_embeddings(doc_id, np.stack(vecs, 0))
     for ent, stats in ctx.entity_stats.items():
         if stats.centroid is not None:
             store.insert_entity_centroid(ent, stats.centroid)

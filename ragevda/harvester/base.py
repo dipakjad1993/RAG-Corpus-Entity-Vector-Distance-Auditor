@@ -49,6 +49,43 @@ def domain_of(url: str) -> str:
         return ""
 
 
+# --- robots.txt politeness (per-domain cache) -------------------------------
+_ROBOTS_CACHE: Dict[str, object] = {}
+
+
+def robots_allowed(url: str, user_agent: str = "*", timeout: float = 8.0) -> bool:
+    """Return True when fetching ``url`` is allowed by the site's robots.txt.
+
+    Fail-open: unparseable/missing robots.txt or any fetch error means allowed
+    (logged at debug). Results are cached per domain for the process lifetime.
+    Uses only the stdlib (``urllib.robotparser``) — no new dependencies.
+    """
+    from urllib.parse import urlparse
+    from urllib.robotparser import RobotFileParser
+
+    try:
+        parts = urlparse(url)
+        domain = (parts.netloc or "").lower()
+        if not domain or parts.scheme not in ("http", "https"):
+            return True
+        if domain in _ROBOTS_CACHE:
+            rp = _ROBOTS_CACHE[domain]
+        else:
+            rp = RobotFileParser()
+            rp.set_url(f"{parts.scheme}://{parts.netloc}/robots.txt")
+            try:
+                rp.read()
+            except Exception:  # noqa: BLE001
+                return True
+            _ROBOTS_CACHE[domain] = rp
+        try:
+            return bool(rp.can_fetch(user_agent or "*", url))
+        except Exception:  # noqa: BLE001
+            return True
+    except Exception:  # noqa: BLE001
+        return True
+
+
 @runtime_checkable
 class Harvester(Protocol):
     """Implementations turn queries into cleaned documents."""

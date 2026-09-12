@@ -13,7 +13,7 @@ import logging
 import time
 from typing import Dict, List, Optional
 
-from .base import Document, new_document
+from .base import Document, new_document, robots_allowed
 from .cleaner import extract_text
 from ..utils import HttpClient, get_logger
 
@@ -105,6 +105,10 @@ class SearXNGHarvester:
 
     def _fetch(self, c: Dict) -> Optional[Document]:
         try:
+            ua = getattr(getattr(self.client, "_client", None), "headers", {}).get("user-agent", "*")
+            if not robots_allowed(c["url"], user_agent=ua if isinstance(ua, str) else "*"):
+                logger.info("fetch %s disallowed by robots.txt (skipped)", c["url"])
+                return None
             t0 = time.perf_counter()
             resp = self.client.get(c["url"])
             fetch_ms = (time.perf_counter() - t0) * 1000.0

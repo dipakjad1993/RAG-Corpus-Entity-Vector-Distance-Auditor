@@ -4,9 +4,12 @@ Primary engine: Hugging Face ``sentence-transformers`` running fully locally
 (e.g. ``all-MiniLM-L6-v2`` or ``bge-small-en-v1.5``).  All computation stays
 on the operator's machine -- no OpenAI / paid API calls.
 
-A deterministic TF-IDF / hashing fallback is provided so the pipeline still
-runs in air-gapped or dependency-missing environments (semantic quality is
-lower, but the maths and reports remain valid for triage).
+There is NO synthetic fallback in the default path: when
+``require_real=True`` (the orchestrator default) and no locally-cached real
+checkpoint can be loaded, initialisation raises ``RuntimeError`` instead of
+emitting degraded vectors. A hashing-vectorizer triage path exists only for
+explicit opt-in (``use_fallback=True`` or ``require_real=False``) and is always
+reported as ``tfidf-fallback`` in ``kind()`` and the run's ``data_integrity``.
 """
 
 from __future__ import annotations

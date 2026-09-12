@@ -16,7 +16,7 @@ import re
 import time
 from typing import Dict, List, Optional
 
-from .base import Document, new_document, domain_of
+from .base import Document, new_document, domain_of, robots_allowed
 from .cleaner import extract_text
 from ..utils import HttpClient, get_logger
 
@@ -106,6 +106,10 @@ def _search_html(query: str, depth: int, client: HttpClient, region: str):
 def _fetch_and_clean(url: str, title: str, source_type: str, query: str,
                       client: HttpClient, min_chars: int) -> Optional[Document]:
     try:
+        ua = getattr(getattr(client, "_client", None), "headers", {}).get("user-agent", "*")
+        if not robots_allowed(url, user_agent=ua if isinstance(ua, str) else "*"):
+            logger.info("fetch %s disallowed by robots.txt (skipped)", url)
+            return None
         t0 = time.perf_counter()
         resp = client.get(url)
         fetch_ms = (time.perf_counter() - t0) * 1000.0

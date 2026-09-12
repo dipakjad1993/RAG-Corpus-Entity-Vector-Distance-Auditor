@@ -15,12 +15,16 @@ dist/
 
 # RAG-EVDA runtime data (generated per-run, not source)
 ragevda_output/
+ragevda_output_offline_demo/
 web_output/
 sample_corpus/
 
 # Local logs
 _web*.log
 _web*.err
+
+# Local config with real brand names (commit only config.example.yaml)
+config.yaml
 
 # OS / editor
 .DS_Store

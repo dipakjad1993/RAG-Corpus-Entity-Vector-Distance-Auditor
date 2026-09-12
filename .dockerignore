@@ -1,0 +1,14 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.git/
+web_output/
+ragevda_output/
+_web*.log
+_web*.err
+config.yaml
+tests/
+examples/
+assets/
+.pytest_cache/

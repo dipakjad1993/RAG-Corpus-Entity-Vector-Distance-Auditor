@@ -55,6 +55,7 @@ def _load_job_data(job: str):
         return None
 
 JOBS: Dict[str, Dict] = {}
+JOBS_LOCK = threading.Lock()  # guards JOBS create/update/read across worker threads
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_OUTPUT = os.path.join(ROOT, "web_output")
 SCHEDULER = Scheduler()
@@ -130,13 +131,14 @@ class _JobLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = self.format(record)
-            j = JOBS.get(self.job_id)
-            if not j:
-                return
-            j["logs"].append(msg)
-            if len(j["logs"]) > 800:
-                j["logs"] = j["logs"][-800:]
-            _progress_from_msg(j, msg)
+            with JOBS_LOCK:
+                j = JOBS.get(self.job_id)
+                if not j:
+                    return
+                j["logs"].append(msg)
+                if len(j["logs"]) > 800:
+                    j["logs"] = j["logs"][-800:]
+                _progress_from_msg(j, msg)
         except Exception:  # noqa: BLE001
             pass
 
@@ -689,10 +691,11 @@ def _start_run(profile: dict) -> str:
     job_dir = os.path.join(WEB_OUTPUT, "jobs", job_id)
     os.makedirs(job_dir, exist_ok=True)
     cfg.output_dir = job_dir
-    JOBS[job_id] = {
-        "status": "running", "logs": [], "progress": 2,
-        "stage": "Queued", "dir": job_dir, "error": "",
-    }
+    with JOBS_LOCK:
+        JOBS[job_id] = {
+            "status": "running", "logs": [], "progress": 2,
+            "stage": "Queued", "dir": job_dir, "error": "",
+        }
     threading.Thread(target=_worker, args=(job_id, cfg), daemon=True).start()
     return job_id
 
@@ -949,15 +952,18 @@ def create_app() -> Flask:
 
     @app.route("/status/<job>")
     def status(job: str):
-        j = JOBS.get(job)
-        if not j:
+        with JOBS_LOCK:
+            j = JOBS.get(job)
+            snap = dict(j) if j else None
+            logs = list(j["logs"]) if j else []
+        if not snap:
             return Response(json.dumps({"status": "not_found"}), mimetype="application/json")
         return Response(json.dumps({
-            "status": j["status"],
-            "progress": j["progress"],
-            "stage": j["stage"],
-            "logs": j["logs"],
-            "error": j["error"],
+            "status": snap["status"],
+            "progress": snap["progress"],
+            "stage": snap["stage"],
+            "logs": logs,
+            "error": snap["error"],
         }), mimetype="application/json")
 
     @app.route("/api/probe", methods=["POST"])
@@ -1173,7 +1179,8 @@ def create_app() -> Flask:
 
 
 def _worker(job_id: str, cfg) -> None:
-    j = JOBS[job_id]
+    with JOBS_LOCK:
+        j = JOBS[job_id]
     handler = _JobLogHandler(job_id)
     handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
     rag_logger = logging.getLogger("ragevda")
@@ -1196,15 +1203,17 @@ def _worker(job_id: str, cfg) -> None:
                 logging.getLogger(name).propagate = True
 
         run(cfg)
-        j["logs"].append("Audit complete.")
-        j["progress"] = 100
-        j["stage"] = "Complete"
-        j["status"] = "done"
+        with JOBS_LOCK:
+            j["logs"].append("Audit complete.")
+            j["progress"] = 100
+            j["stage"] = "Complete"
+            j["status"] = "done"
     except Exception as exc:  # noqa: BLE001
         logger.exception("audit failed")
-        j["logs"].append("ERROR: " + str(exc))
-        j["error"] = str(exc)
-        j["status"] = "error"
+        with JOBS_LOCK:
+            j["logs"].append("ERROR: " + str(exc))
+            j["error"] = str(exc)
+            j["status"] = "error"
     finally:
         rag_logger.removeHandler(handler)
 
