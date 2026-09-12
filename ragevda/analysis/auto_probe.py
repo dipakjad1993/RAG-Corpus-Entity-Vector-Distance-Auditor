@@ -786,11 +786,12 @@ def _sanitize_entities(names: List[str], brand: str) -> List[str]:
     """Normalize + drop generic/junk entity candidates (never invent any)."""
     out: List[str] = []
     brand_l = (brand or "").lower()
+    brand_clean = _clean_entity_name(brand).lower()
     for n in names or []:
         c = _clean_entity_name(n)
         if not c or len(c) < 3 or len(c) > 48:
             continue
-        if c.lower() == brand_l or brand_l in c.lower():
+        if c.lower() in (brand_l, brand_clean) or brand_l in c.lower():
             continue
         if _is_generic_entity(c):
             continue
