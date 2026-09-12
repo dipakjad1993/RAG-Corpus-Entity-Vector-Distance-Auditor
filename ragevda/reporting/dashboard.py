@@ -187,7 +187,7 @@ def _render_advanced(adv: Dict[str, Any], brand: str, cfg: Dict,
                 f"<tr class='row-{ 'bad' if d['severity']=='critical' else ('warn' if d['severity']=='high' else 'good') }'"
                 f"><td>{_esc(d['topic'])}</td><td>{_esc(d['leading_competitor'] or '—')}</td>"
                 f"<td>{d['brand_on_window_usage_tokens']}</td><td>{d['leader_on_window_usage_tokens']}</td>"
-                f"<td>{_bar(d['brand_density'], max(d['leader_density'], d['brand_density'], 0.01) or 1.0, "var(--m3-primary)")}</td>"
+                f"<td>{_bar(d['brand_density'], max(d['leader_density'], d['brand_density'], 0.01) or 1.0, 'var(--m3-primary)')}</td>"
                 f"<td>{d['tokens_needed_to_displace']}</td><td>{_esc(d['severity'])}</td></tr>"
             )
         parts.append(f"""
@@ -375,7 +375,7 @@ def render_dashboard(data: Dict[str, Any]) -> str:
             f"<td>{e['docs_mentioned']}/{e['docs_total']}</td>"
             f"<td>{e['docs_linked']}</td><td>{e['docs_unlinked']}</td>"
             f"<td>{e['docs_omitted']}</td>"
-            f"<td>{_bar(e['mention_rate_pct'], 100.0, "var(--m3-tertiary)")}</td>"
+            f"<td>{_bar(e['mention_rate_pct'], 100.0, 'var(--m3-tertiary)')}</td>"
             f"<td>{e['link_rate_of_mentions_pct']}%</td></tr>"
         )
 
