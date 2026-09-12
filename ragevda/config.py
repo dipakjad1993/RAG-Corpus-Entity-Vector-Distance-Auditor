@@ -249,7 +249,11 @@ class RunConfig:
         if self.crawl_depth < 1:
             raise ValueError("crawl_depth must be >= 1")
         if self.crawl_depth > 200:
-            # hard safety cap to avoid abusive scraping
+            # hard safety cap to avoid abusive scraping (logged, never silent)
+            logger.warning(
+                "crawl_depth=%s exceeds the hard safety cap; clamped to 200",
+                self.crawl_depth,
+            )
             self.crawl_depth = 200
 
         if self.harvester not in ("duckduckgo", "searxng", "file"):

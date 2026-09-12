@@ -39,5 +39,15 @@ dependencies = [
 [project.scripts]
 ragevda = "ragevda.cli:main"
 
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.4", "pip-audit>=2.7"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 110
+
 [tool.setuptools.packages.find]
 include = ["ragevda*"]
