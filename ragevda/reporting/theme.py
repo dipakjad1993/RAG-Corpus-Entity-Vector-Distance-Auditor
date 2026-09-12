@@ -3,13 +3,18 @@
 Single source of truth for the visual language used across the self-contained
 HTML report, the narrative pages and the Flask web app:
 
-* **Roboto Flex** (the Material 3 / Pixel typography) is bundled locally and
-  embedded as a base64 ``data:`` URI so every surface is *fully offline and
-  self-contained* — there are no CDN ``@import`` calls and no external font
-  files needed at render time (a generated dashboard can even be emailed and
-  opened standalone).
-* Authentic **Material 3 color tokens** (primary / secondary / tertiary /
-  surfaces / outline) with dark & light tonal palettes.
+* **Pixel-first typography**: `'Google Sans','Product Sans'` lead the stack so
+  Pixel phones and Android devices render the genuine Pixel typeface; everywhere
+  else it falls back to locally-bundled **Roboto Flex** (Material 3's official
+  Pixel-fallback typeface), base64-embedded as a ``data:`` URI so every surface
+  is *fully offline and self-contained* — no CDN ``@import`` calls, no external
+  font files (a dashboard can even be emailed and opened standalone).
+* Authentic **Material 3 / M3 Expressive color tokens** (primary / secondary /
+  tertiary / surfaces / outline) with dark & light tonal palettes, expressive
+  shapes (20–28px cards, pill buttons), spring easing, and a working runtime
+  light/dark toggle (`body.light` scope + `color-scheme`). Component styles
+  reference token *variables* only — no mood is ever baked in, so toggling the
+  theme re-renders every color correctly.
 * M3 elevation, shape (roundness) and type-scale tokens, plus shared
   component styles (top app bar, navigation, cards, chips, tables, buttons,
   progress) so dashboard, narrative and web pages stay visually consistent.
@@ -30,7 +35,14 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 _FONT_REL = os.path.join("assets", "fonts", "RobotoFlex-Variable.woff2")
 
 FONT_FAMILY = "Roboto Flex"
+# Pixel-first stack: Google Sans / Product Sans ship on Pixel phones and many
+# Android devices, so the UI renders the genuine Pixel typeface there; every-
+# where else it falls back to the locally-bundled Roboto Flex (Material 3's
+# official Pixel-fallback typeface, embedded as a data URI — fully offline).
+# Google Sans itself is proprietary and cannot be redistributed, hence the
+# prefer-but-fallback stack rather than a download.
 _FONT_FALLBACK = (
+    "'Google Sans','Product Sans','Google Sans Text',"
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 )
 
@@ -134,6 +146,7 @@ def material_css(mood: str, selector: str = ":root") -> str:
   --type-mono:500 12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 """
     color_block = f"""
+  color-scheme:{'light' if mood == 'light' else 'dark'};
   --m3-primary:{v('primary')};
   --m3-on-primary:{v('on-primary')};
   --m3-primary-container:{v('primary-container')};
@@ -162,8 +175,9 @@ def material_css(mood: str, selector: str = ":root") -> str:
   --m3-scrim:{v('scrim')};
   --m3-elev-0:{elev[0]}; --m3-elev-1:{elev[1]};
   --m3-elev-2:{elev[2]}; --m3-elev-3:{elev[3]};
-  --m3-shape-xs:8px; --m3-shape-s:12px; --m3-shape-m:16px;
+  --m3-shape-xs:10px; --m3-shape-s:14px; --m3-shape-m:20px;
   --m3-shape-l:28px; --m3-shape-full:999px;
+  --m3-ease:cubic-bezier(.2,0,0,1);
   --m3-font:'{FONT_FAMILY}',{_FONT_FALLBACK};
   --m3-shadow-1:0 1px 3px rgba(0,0,0,.3),0 1px 2px rgba(0,0,0,.24);
   --m3-shadow-2:0 2px 6px rgba(0,0,0,.24),0 1px 4px rgba(0,0,0,.22);
@@ -200,7 +214,7 @@ a{{color:var(--m3-primary); text-decoration:none}}
 a:hover{{text-decoration:underline}}
 .m3-app-bar{{
   position:sticky; top:0; z-index:20; backdrop-filter:blur(14px);
-  background:color-mix(in srgb,{v('surface-container')} 88%, transparent);
+  background:color-mix(in srgb,var(--m3-surface-c) 88%, transparent);
   border-bottom:1px solid var(--m3-outline-variant);
 }}
 .m3-app-inner{{max-width:1180px; margin:0 auto; padding:12px 22px; display:flex;
@@ -228,7 +242,9 @@ a:hover{{text-decoration:underline}}
 .muted{{color:var(--m3-on-surface-variant)}}
 .m3-card{{
   background:var(--m3-surface-container-low); border:1px solid var(--m3-outline-variant);
-  border-radius:var(--m3-shape-m); padding:18px 20px; box-shadow:var(--m3-shadow-1)}}
+  border-radius:var(--m3-shape-l); padding:22px 24px; box-shadow:var(--m3-shadow-1);
+  transition:transform .3s var(--m3-ease), box-shadow .3s var(--m3-ease)}}
+.m3-card:hover{{transform:translateY(-2px); box-shadow:var(--m3-shadow-2)}}
 .m3-grid{{display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); margin:16px 0}}
 .m3-kpi{{background:var(--m3-surface-container-low); border:1px solid var(--m3-outline-variant);
   border-radius:var(--m3-shape-m); padding:18px 20px; box-shadow:var(--m3-shadow-1)}}
@@ -256,9 +272,10 @@ a:hover{{text-decoration:underline}}
 .m3-badge.on-primary{{background:var(--m3-primary); color:var(--m3-on-primary)}}
 .m3-badge.error{{background:var(--m3-error-container); color:var(--m3-on-error-container)}}
 .m3-btn{{background:var(--m3-primary); color:var(--m3-on-primary); border:none;
-  border-radius:var(--m3-shape-full); padding:12px 22px; font-weight:700; font-size:14px;
-  cursor:pointer; box-shadow:var(--m3-shadow-1); transition:.15s; font-family:var(--m3-font)}}
-.m3-btn:hover{{box-shadow:var(--m3-shadow-2); filter:brightness(1.04); text-decoration:none; color:var(--m3-on-primary)}}
+  border-radius:20px; padding:14px 26px; font-weight:700; font-size:14px;
+  cursor:pointer; box-shadow:var(--m3-shadow-1); transition:.25s var(--m3-ease); font-family:var(--m3-font)}}
+.m3-btn:hover{{box-shadow:var(--m3-shadow-3); filter:brightness(1.05); transform:translateY(-1px); text-decoration:none; color:var(--m3-on-primary)}}
+.m3-btn:active{{transform:translateY(0) scale(.98)}}
 .m3-btn.tonal{{background:var(--m3-secondary-container); color:var(--m3-on-secondary-container)}}
 .m3-btn.tonal:hover{{color:var(--m3-on-secondary-container)}}
 .m3-btn.outlined{{background:transparent; color:var(--m3-primary);
@@ -270,7 +287,7 @@ a:hover{{text-decoration:underline}}
   border:1px solid var(--m3-outline-variant); border-radius:var(--m3-shape-s);
   padding:12px 14px; font-size:14px; font-family:inherit; transition:border-color .15s, box-shadow .15s}}
 .m3-input:focus{{outline:none; border-color:var(--m3-primary);
-  box-shadow:0 0 0 4px color-mix(in srgb, {v('primary')} 25%, transparent)}}
+  box-shadow:0 0 0 4px color-mix(in srgb, var(--m3-primary) 25%, transparent)}}
 textarea.m3-input{{min-height:92px; resize:vertical; line-height:1.55}}
 .m3-field-grid{{display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}}
 .m3-check{{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--m3-on-surface-variant)}}
@@ -291,14 +308,14 @@ textarea.m3-input{{min-height:92px; resize:vertical; line-height:1.55}}
   border-radius:var(--m3-shape-full); height:12px; overflow:hidden}}
 .m3-progress-fill{{height:12px; border-radius:var(--m3-shape-full); width:0%;
   background:linear-gradient(90deg,var(--m3-primary),var(--m3-tertiary));
-  transition:width .45s ease; box-shadow:0 0 12px color-mix(in srgb,{v('primary')} 60%,transparent)}}
+  transition:width .45s ease; box-shadow:0 0 12px color-mix(in srgb,var(--m3-primary) 60%,transparent)}}
 .m3-progress-block{{margin:16px 0 4px}}
 .m3-barlabel{{display:flex; justify-content:space-between; font-size:12.5px; color:var(--m3-on-surface-variant);
   margin-bottom:8px; font-weight:600; letter-spacing:.3px}}
 .m3-console{{background:var(--m3-surface-container-high); border:1px solid var(--m3-outline-variant);
   border-radius:var(--m3-shape-m); padding:14px 16px; height:240px; overflow:auto;
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px;
-  color:{v('primary')}; line-height:1.55; box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}}
+  color:var(--m3-primary); line-height:1.55; box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}}
 .m3-issue{{border-radius:var(--m3-shape-m); padding:14px 17px;
   background:var(--m3-surface-container-low); border:1px solid var(--m3-outline-variant);
   box-shadow:var(--m3-shadow-1)}}

@@ -581,7 +581,20 @@ def _start_run(profile: dict) -> str:
     Returns the new job id. Used by both the UI ('/run') and the scheduler, so
     scheduled runs land in the same ``web_output/jobs`` store and appear in
     History/Trends automatically.
+
+    Single-flight: the local engine (CPU embeddings + transformer sentiment)
+    runs ONE audit at a time. A second submission while one is running raises a
+    friendly error instead of launching a parallel run whose logs/progress would
+    cross-contaminate the first job's live view.
     """
+    with JOBS_LOCK:
+        running = [jid for jid, j in JOBS.items() if j.get("status") == "running"]
+    if running:
+        raise RuntimeError(
+            "Another audit is already running (job %s). This engine runs one "
+            "audit at a time so CPU-heavy embeddings stay accurate — track it "
+            "in History & Trends or wait for it to finish." % running[0]
+        )
     from .config import RunConfig
 
     brand = (profile.get("target_brand") or "").strip()

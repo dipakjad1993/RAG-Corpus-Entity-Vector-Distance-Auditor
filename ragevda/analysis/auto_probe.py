@@ -748,6 +748,56 @@ def _competitors_on_page(text: str, brand: str) -> List[str]:
     return _dedupe([c for c in comps if 3 <= len(c) <= 40], limit=8)
 
 
+# Generic single/common nouns that search-result parsing mistakes for rival
+# brand names (nav labels, section names, CTAs). A candidate is rejected when
+# it IS one of these, or when EVERY word in it is generic — so "News UK" and
+# "KM Media Group" survive (UK/KM are distinctive) while "Funding" dies.
+_GENERIC_ENTITY_WORDS = frozenset({
+    "funding", "news", "media", "group", "company", "companies", "home",
+    "about", "contact", "contacts", "subscribe", "subscription", "login",
+    "signin", "signup", "register", "press", "careers", "jobs", "blog",
+    "blogs", "shop", "store", "support", "help", "privacy", "terms",
+    "cookies", "cookie", "menu", "search", "topics", "sections", "edition",
+    "editions", "live", "breaking", "opinion", "sport", "sports", "culture",
+    "lifestyle", "travel", "tech", "technology", "business", "money",
+    "markets", "market", "videos", "video", "podcasts", "podcast",
+    "newsletters", "newsletter", "archive", "sitemap", "account", "profile",
+    "settings", "read", "more", "view", "all", "sign", "click", "here",
+    "limited", "services", "solutions", "official", "site", "website",
+})
+
+
+def _clean_entity_name(name: str) -> str:
+    """Split camelCase concatenations from nav labels into real words."""
+    s = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name or "")
+    s = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", " ", s)
+    return re.sub(r"\s+", " ", s).strip(" .-")
+
+
+def _is_generic_entity(name: str) -> bool:
+    words = [w.strip(".,;:!?()").lower() for w in (name or "").split()]
+    words = [w for w in words if w]
+    if not words:
+        return True
+    return all(w in _GENERIC_ENTITY_WORDS for w in words)
+
+
+def _sanitize_entities(names: List[str], brand: str) -> List[str]:
+    """Normalize + drop generic/junk entity candidates (never invent any)."""
+    out: List[str] = []
+    brand_l = (brand or "").lower()
+    for n in names or []:
+        c = _clean_entity_name(n)
+        if not c or len(c) < 3 or len(c) > 48:
+            continue
+        if c.lower() == brand_l or brand_l in c.lower():
+            continue
+        if _is_generic_entity(c):
+            continue
+        out.append(c)
+    return _dedupe(out, limit=8)
+
+
 def _competitors_from_search(
     brand: str, max_seconds: Optional[float] = 6.0
 ) -> List[str]:
@@ -1425,12 +1475,13 @@ def probe(input_text: str, depth: int = 8) -> Dict[str, Any]:
             c = _extract_org_phrases((r.get("body") or "") + " " +
                                      (r.get("title") or ""), brand)
             competitors += c
-    competitors = [c for c in _dedupe(competitors, limit=8)
-                   if c.lower() != brand.lower() and brand.lower() not in c.lower()]
+    competitors = _sanitize_entities(
+        _dedupe(competitors, limit=12), brand)
     if not competitors and fetched:
-        competitors = [p for p in _extract_org_phrases(page_text)
-                       if p.lower() != brand.lower() and brand.lower() not in p.lower()]
-        competitors = _dedupe(competitors, limit=6)
+        competitors = _sanitize_entities(
+            [p for p in _extract_org_phrases(page_text)
+             if p.lower() != brand.lower() and brand.lower() not in p.lower()],
+            brand)
     competitors_incomplete = False
     if not competitors:
         # never invent placeholder names — flag for the UI instead
