@@ -791,7 +791,8 @@ def _sanitize_entities(names: List[str], brand: str) -> List[str]:
         c = _clean_entity_name(n)
         if not c or len(c) < 3 or len(c) > 48:
             continue
-        if c.lower() in (brand_l, brand_clean) or brand_l in c.lower():
+        if c.lower() in (brand_l, brand_clean) or brand_l in c.lower() \
+                or (brand_clean and brand_clean in c.lower()):
             continue
         if _is_generic_entity(c):
             continue
