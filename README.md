@@ -692,13 +692,14 @@ this topic despite the highest raw support-mention count (159) — exactly the
 
 > These are **actual rendered screenshots** of the self-contained `dashboard.html`
 > produced by the real The Guardian run above (job
-> `web_output/jobs/20260830-094637-26b22b`). They are full-color captures of the
-> live report — real tables, real scores, real source URLs — **not** mockups or
-> dummy data.
+> `web_output/jobs/20260830-094637-26b22b`, captured 2026-08-30). They are full-color
+> captures of the live report — real tables, real scores, real source URLs — **not**
+> mockups or dummy data. Every file under [`assets/`](assets/) is unique
+> (SHA-256 verified, no duplicates) and maps 1:1 to that job's `report.json`.
 
-### Full-page dashboard (scroll view)
+### Full-page dashboard (scroll view, 760px WebP)
 
-![RAG-EVDA full dashboard — The Guardian audit](assets/dashboard_full.png)
+![RAG-EVDA full dashboard — The Guardian audit](assets/dashboard_full.webp)
 
 ### Brand health issues
 
@@ -724,25 +725,17 @@ this topic despite the highest raw support-mention count (159) — exactly the
 
 ![Prioritized recommendations — real audit](assets/recommendations.png)
 
-### Real-time source freshness & liveness
+### Real-time source freshness & liveness (also feeds the per-engine SoV view)
 
 ![Real-time source freshness & liveness — real audit](assets/freshness.png)
-
-### Vector Share of Voice — topic × AI-engine matrix
-
-![Vector Share of Voice topic × AI-engine matrix — real audit](assets/engine_sov.png)
 
 ### Automated token-density adjuster (real BPE counts)
 
 ![Automated token-density adjuster — real audit](assets/token_density.png)
 
-### RAG chunk hallucination & sentiment auditor (real RoBERTa)
+### RAG chunk sentiment auditor + verbatim negative-framed brand windows (real RoBERTa)
 
-![RAG chunk hallucination & sentiment auditor — real audit](assets/sentiment.png)
-
-### Verbatim negative-framed brand windows
-
-![Verbatim negative-framed brand windows — real audit](assets/risk_windows.png)
+![RAG chunk sentiment auditor and risk windows — real audit](assets/sentiment.png)
 
 ### Vector poisoning / negative-SEO detection
 
