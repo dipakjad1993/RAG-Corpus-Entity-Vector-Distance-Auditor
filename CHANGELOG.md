@@ -2,6 +2,18 @@
 
 All notable changes to RAG-EVDA. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+### Fixed
+- Concurrent audits no longer cross-contaminate logs/progress (single-flight
+  engine: one audit at a time, friendly busy message naming the running job).
+- Light mode now re-renders every color (app-bar, console, focus rings used
+  baked dark values); `color-scheme` added for native controls.
+- M3 Expressive polish: Pixel-first type stack (`Google Sans` → bundled
+  Roboto Flex fallback), 20–28px cards with hover lift, spring-eased buttons.
+- Auto-Detect entity hygiene: camelCase splits, generic nouns (`Funding`),
+  CTA phrases (`Discover …`), possessive fragments, and brand-stem overlap
+  rejected from competitor suggestions; brand-family containment fixed.
+
 ## [1.2.0] — 2026-09-12 — Real-data hardening release
 
 ### Removed
