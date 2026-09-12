@@ -20,35 +20,44 @@ import os
 from typing import Any, Dict, Optional
 
 from ..utils import get_logger
+from .theme import get_style as _get_style
 
 logger = get_logger("ragevda.reporting.dashboard")
+
+# Material 3 tonal palette mapped to the report's semantic states.
+_GOOD = "#4ADE80"
+_WARN = "#FBBF24"
+_BAD = "#F87171"
+_NEUT = "#93A0B4"
+
+_STYLE = _get_style("report")
 
 
 def _esc(x) -> str:
     return html.escape(str(x))
 
 
-def _bar(value: float, max_val: float = 1.0, color: str = "#4f8cff") -> str:
+def _bar(value: float, max_val: float = 1.0, color: str = "var(--m3-primary)") -> str:
     pct = max(0.0, min(100.0, (value / max_val) * 100.0)) if max_val else 0.0
     return (
-        f'<div class="bartrack"><div class="bar" style="width:{pct:.1f}%;'
+        f'<div class="m3-bartrack"><div class="m3-bar" style="width:{pct:.1f}%;'
         f'background:{color}"></div>'
-        f'<span class="barval">{value:.2f}</span></div>'
+        f'<span class="m3-barval">{value:.2f}</span></div>'
     )
 
 
 def _label_color(label: str) -> str:
     return {
-        "Tightly Bound": "#2ecc71",
-        "Moderate": "#f1c40f",
-        "Far": "#e74c3c",
-    }.get(label, "#888")
+        "Tightly Bound": _GOOD,
+        "Moderate": _WARN,
+        "Far": _BAD,
+    }.get(label, _NEUT)
 
 
 def _conf_badge(conf: str) -> str:
-    color = {"high": "#2ecc71", "medium": "#f1c40f",
-             "low": "#e67e22", "none": "#e74c3c"}.get(conf, "#888")
-    return f"<span class='conf conf-{conf}'>{conf}</span>"
+    color = {"high": _GOOD, "medium": _WARN,
+             "low": "#FB923C", "none": _BAD}.get(conf, _NEUT)
+    return f"<span class='m3-badge' style='background:{color};color:#0b0b0d'>{conf}</span>"
 
 
 def _brand_health_issues(data: Dict[str, Any], brand: str):
@@ -111,8 +120,8 @@ def _render_advanced(adv: Dict[str, Any], brand: str, cfg: Dict,
     if freshness and freshness.get("summary"):
         fs = freshness["summary"]
         staleness_colors = {
-            "fresh": "#2ecc71", "recent": "#f1c40f",
-            "stale": "#e67e22", "aging": "#e74c3c", "unknown": "#95a5a6",
+            "fresh": _GOOD, "recent": _WARN,
+            "stale": _WARN, "aging": _BAD, "unknown": _NEUT,
         }
         fr_rows = ""
         pct_map = {"fresh": "fresh_pct", "recent": "recent_pct",
@@ -124,7 +133,7 @@ def _render_advanced(adv: Dict[str, Any], brand: str, cfg: Dict,
                 f"<div class='kpi'><div class='v' style='color:{color}'>{val}%</div>"
                 f"<div class='l'>{cat.title()}</div></div>"
             )
-        live_bar = _bar(fs.get("live_pct", 0), 100.0, "#2ecc71")
+        live_bar = _bar(fs.get("live_pct", 0), 100.0, _GOOD)
         parts.append(f"""
         <section><h2>Real-Time Source Freshness &amp; Liveness</h2>
         <div class="kpis">
@@ -153,7 +162,7 @@ def _render_advanced(adv: Dict[str, Any], brand: str, cfg: Dict,
                     tds += "<td class='muted'>—</td>"
                 else:
                     v = c["vector_sov_pct"]
-                    color = "#1abc9c" if v >= 50 else ("#f1c40f" if v >= 25 else "#e74c3c")
+                    color = _GOOD if v >= 50 else (_WARN if v >= 25 else _BAD)
                     tds += (
                         f"<td><b style='color:{color}'>{v}%</b>"
                         f"<div class='muted' style='font-size:10px'>{c['relevant_docs']} docs</div></td>"
@@ -178,7 +187,7 @@ def _render_advanced(adv: Dict[str, Any], brand: str, cfg: Dict,
                 f"<tr class='row-{ 'bad' if d['severity']=='critical' else ('warn' if d['severity']=='high' else 'good') }'"
                 f"><td>{_esc(d['topic'])}</td><td>{_esc(d['leading_competitor'] or '—')}</td>"
                 f"<td>{d['brand_on_window_usage_tokens']}</td><td>{d['leader_on_window_usage_tokens']}</td>"
-                f"<td>{_bar(d['brand_density'], max(d['leader_density'], d['brand_density'], 0.01) or 1.0, '#4f8cff')}</td>"
+                f"<td>{_bar(d['brand_density'], max(d['leader_density'], d['brand_density'], 0.01) or 1.0, "var(--m3-primary)")}</td>"
                 f"<td>{d['tokens_needed_to_displace']}</td><td>{_esc(d['severity'])}</td></tr>"
             )
         parts.append(f"""
@@ -204,7 +213,7 @@ def _render_advanced(adv: Dict[str, Any], brand: str, cfg: Dict,
                 f"<tr><td>{_esc(s['entity'])}</td><td>{s['mentions']}</td>"
                 f"<td>{s['positive_pct']}%</td><td>{s['neutral_pct']}%</td>"
                 f"<td>{s['negative_pct']}%</td>"
-                f"<td><b style='color:{'#2ecc71' if s['net_sentiment']>0.1 else ('#e74c3c' if s['net_sentiment']<-0.1 else '#f1c40f')}'>{s['net_sentiment']:+.3f}</b></td>"
+                f"<td><b style='color:{_GOOD if s['net_sentiment']>0.1 else (_BAD if s['net_sentiment']<-0.1 else _WARN)}'>{s['net_sentiment']:+.3f}</b></td>"
                 f"<td class='{framing_cls}'>{s['risk_windows']} risk</td></tr>"
             )
         risks = sent.get("risk_windows", []) or []
@@ -228,7 +237,7 @@ def _render_advanced(adv: Dict[str, Any], brand: str, cfg: Dict,
     # ---- Vector poisoning / negative SEO ----------------------------
     pois = adv.get("poisoning", {}) or {}
     status = pois.get("brand_poisoning_status", "clean")
-    status_color = {"clean": "#2ecc71", "at-risk": "#f39c12", "compromised": "#e74c3c"}.get(status, "#888")
+    status_color = {"clean": _GOOD, "at-risk": _WARN, "compromised": _BAD}.get(status, _NEUT)
     psrc = pois.get("sources", []) or []
     psrc_rows = "".join(
         f"<tr class='row-bad'><td class='src'><a href='{_esc(s['url'])}' target='_blank'>{_esc(s['title'][:50])}</a></td>"
@@ -366,7 +375,7 @@ def render_dashboard(data: Dict[str, Any]) -> str:
             f"<td>{e['docs_mentioned']}/{e['docs_total']}</td>"
             f"<td>{e['docs_linked']}</td><td>{e['docs_unlinked']}</td>"
             f"<td>{e['docs_omitted']}</td>"
-            f"<td>{_bar(e['mention_rate_pct'], 100.0, '#9b59b6')}</td>"
+            f"<td>{_bar(e['mention_rate_pct'], 100.0, "var(--m3-tertiary)")}</td>"
             f"<td>{e['link_rate_of_mentions_pct']}%</td></tr>"
         )
 
@@ -382,8 +391,8 @@ def render_dashboard(data: Dict[str, Any]) -> str:
             f"<tr class='{row_cls}'><td>{_esc(t['topic'])}</td><td>{t['relevant_docs']}</td>"
             f"<td>{t['brand_present_docs']}</td>"
             f"<td>{t['competitor_present_docs']}</td>"
-            f"<td>{_bar(t['vector_share_of_voice_pct'], 100.0, '#1abc9c')}</td>"
-            f"<td>{_bar(t['topic_invisibility_pct'], 100.0, '#e67e22')}</td>"
+            f"<td>{_bar(t['vector_share_of_voice_pct'], 100.0, _GOOD)}</td>"
+            f"<td>{_bar(t['topic_invisibility_pct'], 100.0, _WARN)}</td>"
             f"<td>{t.get('threshold_used', '')}</td></tr>"
         )
 
@@ -548,195 +557,151 @@ def render_dashboard(data: Dict[str, Any]) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RAG-EVDA Report — {_esc(brand)}</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap');
-:root{{
-  --bg:#0b0e14; --bg2:#0e1320; --surface:#141a28; --surface2:#1b2233; --border:#28324c;
-  --text:#e8ecf4; --muted:#94a3c4; --accent:#6d8bff; --accent2:#34d399; --accent3:#a78bfa;
-  --good:#34d399; --warn:#fbbf24; --bad:#fb7185; --radius:16px;
-  --shadow:0 12px 34px rgba(0,0,0,.45); --shadow-sm:0 4px 16px rgba(0,0,0,.30);
-  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
-  --display:'Sora',var(--font);
-}}
-* {{ box-sizing:border-box; }}
-body {{ margin:0; color:var(--text); font-family:var(--font); font-size:14px; line-height:1.65;
-  -webkit-font-smoothing:antialiased; letter-spacing:.1px;
-  background:
-    radial-gradient(1200px 640px at 10% -12%, rgba(109,139,255,.14), transparent 60%),
-    radial-gradient(1000px 520px at 102% -4%, rgba(52,211,153,.10), transparent 55%),
-    var(--bg); }}
-.page {{ max-width:1240px; margin:0 auto; padding:0 22px 60px; }}
-.brand {{ display:flex; gap:14px; align-items:flex-start; }}
-.logo {{ width:46px; height:46px; border-radius:13px; flex:0 0 auto;
-  background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#06121f;
-  font-family:var(--display); font-weight:800; font-size:17px; letter-spacing:-.5px;
-  display:flex; align-items:center; justify-content:center; box-shadow:0 10px 24px rgba(52,211,153,.35); }}
-header {{ padding:30px 0 20px; border-bottom:1px solid var(--border); margin-bottom:8px; }}
-header h1 {{ margin:0; font-family:var(--display); font-size:24px; font-weight:800; letter-spacing:-.4px;
-  background:linear-gradient(92deg,#cfe0ff,var(--accent) 42%,var(--accent2));
-  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }}
-header .sub {{ color:var(--muted); margin-top:10px; font-size:13px; line-height:1.6; }}
-h2 {{ display:flex; align-items:center; gap:9px; font-family:var(--display); font-size:18px; font-weight:700;
-  color:var(--text); margin:32px 0 12px; letter-spacing:-.2px; }}
-h2::before {{ content:""; width:4px; height:18px; border-radius:3px;
-  background:linear-gradient(180deg,var(--accent),var(--accent2)); }}
-section {{ margin:0; }}
-.kpis {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin:18px 0; }}
-.kpi {{ background:linear-gradient(180deg,var(--surface2),var(--surface));
-  border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; box-shadow:var(--shadow-sm); }}
-.kpi .v {{ font-family:var(--display); font-size:32px; font-weight:800; line-height:1.1; }}
-.kpi .l {{ color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.7px; margin-top:6px; }}
-table {{ width:100%; border-collapse:separate; border-spacing:0; margin-top:10px;
-  font-size:13px; background:var(--surface); border:1px solid var(--border);
-  border-radius:var(--radius); overflow:hidden; }}
-th,td {{ text-align:left; padding:11px 13px; border-bottom:1px solid var(--border); vertical-align:top; }}
-th {{ color:var(--muted); text-transform:uppercase; font-size:10.5px; letter-spacing:.6px;
-  background:var(--surface2); font-weight:600; }}
-tbody tr:last-child td {{ border-bottom:none; }}
-tbody tr:nth-child(even) {{ background:rgba(255,255,255,.02); }}
-tbody tr:hover {{ background:rgba(109,139,255,.06); }}
-.row-bad {{ background:rgba(251,113,133,.14) !important; }}
-.row-warn {{ background:rgba(251,191,36,.12) !important; }}
-.row-good {{ background:rgba(52,211,153,.12) !important; }}
-.bartrack {{ position:relative; background:var(--bg); border:1px solid var(--border);
-  border-radius:8px; height:18px; min-width:120px; display:inline-block; width:140px; }}
-.bar {{ height:18px; border-radius:8px; background:linear-gradient(90deg,var(--accent),var(--accent2)); }}
-.barval {{ position:absolute; right:7px; top:0; font-size:11px; line-height:18px; color:#fff; font-weight:600; }}
-.src a, td a {{ color:#7fb4ff; text-decoration:none; }}
-.src a:hover {{ text-decoration:underline; }}
-.rel {{ color:var(--muted); font-size:11px; }}
-.muted {{ color:var(--muted); }}
-.conf {{ font-weight:700; padding:2px 8px; border-radius:6px; font-size:11px; }}
-.conf-high {{ color:var(--good); background:rgba(52,211,153,.14); }}
-.conf-medium {{ color:var(--warn); background:rgba(251,191,36,.14); }}
-.conf-low {{ color:#e3a857; background:rgba(227,168,87,.14); }}
-.conf-none {{ color:var(--bad); background:rgba(251,113,133,.14); }}
-.banner {{ margin:18px 0 0; padding:14px 18px; border-radius:var(--radius);
-  background:rgba(251,113,133,.14); border:1px solid var(--bad); color:#ffd9dd; font-size:13px; }}
-.issues {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; margin-top:12px; }}
-.issue {{ border-radius:var(--radius); padding:14px 17px; background:var(--surface);
-  border:1px solid var(--border); border-left:4px solid #888; box-shadow:var(--shadow-sm); }}
-.issue.critical {{ background:rgba(251,113,133,.10); border-left-color:var(--bad); }}
-.issue.warn {{ background:rgba(251,191,36,.08); border-left-color:var(--warn); }}
-.issue.info {{ background:rgba(109,139,255,.08); border-left-color:var(--accent); }}
-.issue.good {{ background:rgba(52,211,153,.08); border-left-color:var(--good); }}
-.issue-title {{ font-weight:700; font-size:14px; margin-bottom:4px; }}
-.issue-detail {{ font-size:12.5px; color:#c9d3ea; line-height:1.6; }}
-.rec {{ background:linear-gradient(180deg,var(--surface),var(--bg2)); border:1px solid var(--border);
-  border-left:4px solid var(--accent); border-radius:var(--radius);
-  padding:14px 18px; margin:12px 0; box-shadow:var(--shadow-sm); }}
-.rec.p1 {{ border-left-color:var(--bad); }}
-.rec.p2 {{ border-left-color:var(--warn); }}
-.rec.p3 {{ border-left-color:var(--accent); }}
-.rec-head {{ font-size:14px; font-weight:600; }}
-.badge {{ background:linear-gradient(92deg,var(--accent),var(--accent2)); color:#06121f; border-radius:7px; padding:2px 9px;
-  font-size:11px; font-weight:800; }}
-.cat {{ color:var(--muted); font-size:11px; }}
-.rec-body {{ color:#c9d3ea; margin:7px 0; font-size:13px; line-height:1.6; }}
-.rec-action {{ font-size:13px; color:#7ee2a8; }}
-.method {{ background:var(--surface); border:1px solid var(--border);
-  border-radius:var(--radius); padding:10px 24px 20px; }}
-.method h3 {{ color:#7fb4ff; font-size:14px; margin:16px 0 4px; }}
-.method p {{ margin:5px 0; font-size:13px; color:#c9d3ea; line-height:1.6; }}
-.method b {{ color:var(--text); }}
-.footer {{ padding:22px 0; color:var(--muted); font-size:12.5px; line-height:1.6;
-  border-top:1px solid var(--border); margin-top:24px; }}
-details {{ margin-top:6px; }}
-summary {{ cursor:pointer; color:#7fb4ff; font-size:13px; padding:8px 0; }}
-body.light {{ --bg:#f5f8fc; --bg2:#ffffff; --surface:#ffffff; --surface2:#eef2f8; --border:#dde4ef;
-  --text:#0f172a; --muted:#5b6b86; --shadow:0 12px 34px rgba(20,40,80,.10);
-  --shadow-sm:0 4px 16px rgba(20,40,80,.08); }}
-body.light header h1 {{ background:linear-gradient(92deg,#1e3a8a,var(--accent) 46%,#0f766e);
-  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }}
-body.light .kpi, body.light table, body.light .issue, body.light .rec {{ box-shadow:var(--shadow-sm); }}
+{_STYLE}
+/* ---- report-specific component polish on top of the shared M3 system ---- */
+.m3-kpi .v.primary{{color:var(--m3-tertiary)}}
+.m3-kpi .v.good{{color:{_GOOD}}}
+.m3-kpi .v.warn{{color:{_WARN}}}
+.issue{{border-radius:var(--m3-shape-m); padding:14px 17px;
+  background:var(--m3-surface-container-low); border:1px solid var(--m3-outline-variant);
+  border-left:4px solid var(--m3-on-surface-variant); box-shadow:var(--m3-shadow-1)}}
+.issue.critical{{border-left-color:var(--m3-error)}}
+.issue.warn{{border-left-color:{_WARN}}}
+.issue.info{{border-left-color:var(--m3-primary)}}
+.issue.good{{border-left-color:{_GOOD}}}
+.issue-title{{font-weight:700; font-size:14px; margin-bottom:4px}}
+.issue-detail{{font-size:12.5px; color:var(--m3-on-surface-variant); line-height:1.6}}
+.rec{{background:var(--m3-surface-container-low); border:1px solid var(--m3-outline-variant);
+  border-left:4px solid var(--m3-primary); border-radius:var(--m3-shape-m);
+  padding:14px 18px; margin:12px 0; box-shadow:var(--m3-shadow-1)}}
+.rec.p1{{border-left-color:var(--m3-error)}}
+.rec.p2{{border-left-color:{_WARN}}}
+.rec.p3{{border-left-color:var(--m3-primary)}}
+.rec-head{{font-size:14px; font-weight:600}}
+.rec-body{{color:var(--m3-on-surface-variant); margin:7px 0; font-size:13px; line-height:1.6}}
+.rec-action{{font-size:13px; color:var(--m3-primary); font-weight:600}}
+.badge{{background:var(--m3-primary-container); color:var(--m3-on-primary-container);
+  border-radius:var(--m3-shape-xs); padding:2px 9px; font-size:11px; font-weight:800}}
+.cat{{color:var(--m3-on-surface-variant); font-size:11px}}
+.method{{background:var(--m3-surface-container-low); border:1px solid var(--m3-outline-variant);
+  border-radius:var(--m3-shape-m); padding:10px 24px 20px}}
+.method h3{{color:var(--m3-primary); font-size:14px; margin:16px 0 4px}}
+.method p{{margin:5px 0; font-size:13px; color:var(--m3-on-surface-variant); line-height:1.6}}
+.method b{{color:var(--m3-on-surface)}}
+.src a, td a{{color:var(--m3-primary); text-decoration:none}}
+.src a:hover{{text-decoration:underline}}
+.rel{{color:var(--m3-on-surface-variant); font-size:11px}}
+.bar-row{{display:flex; align-items:center; gap:12px; margin:12px 0; flex-wrap:wrap}}
+.bar-label{{color:var(--m3-on-surface-variant); font-size:12px; font-weight:600}}
+.muted{{color:var(--m3-on-surface-variant)}}
+.row-good{{background:color-mix(in srgb,{_GOOD} 12%, transparent) !important}}
+.row-warn{{background:color-mix(in srgb,{_WARN} 12%, transparent) !important}}
+.row-bad{{background:color-mix(in srgb,var(--m3-error) 12%, transparent) !important}}
+details{{margin-top:8px}}
+summary{{cursor:pointer; color:var(--m3-primary); font-size:13px; padding:8px 0; font-weight:600}}
+.m3-hero{{display:flex; flex-wrap:wrap; gap:18px; align-items:flex-start; justify-content:space-between;
+  margin:14px 0 8px}}
+.m3-meta{{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px}}
+.m3-section-toc{{display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 18px}}
+.m3-section-toc a{{background:var(--m3-surface-container); border:1px solid var(--m3-outline-variant);
+  padding:8px 14px; border-radius:var(--m3-shape-full); font-size:12.5px; font-weight:600}}
+.m3-section-toc a:hover{{background:var(--m3-primary-container); color:var(--m3-on-primary-container); text-decoration:none}}
 </style></head>
-<body><div class="page">
-<header>
-  <div class="brand">
-    <div class="logo">EV</div>
-    <div>
-      <h1>RAG Corpus Entity &amp; Vector Distance Auditor</h1>
-      <div class="sub">Target brand: <b>{_esc(brand)}</b> &nbsp;|&nbsp;
-      Topics: {_esc(', '.join(cfg['industry_topics']))} &nbsp;|&nbsp;
-      Competitors: {_esc(', '.join(cfg['competitor_entities']))} &nbsp;|&nbsp;
-      Docs: {ctx_stats.get('doc_count',0)} &nbsp;|&nbsp;
-      Embedding: {_esc(data['meta']['embedding_kind'])}</div>
-    </div>
+<body><div class="m3-app-bar"><div class="m3-app-inner">
+  <div class="m3-logo">EV</div>
+  <div class="m3-title">RAG Corpus Entity &amp; Vector Distance Auditor
+    <small>Local, zero-cost vector intelligence &mdash; fully data-driven</small>
   </div>
-</header>
+</div></div>
+<div class="m3-container">
+<div class="m3-hero">
+  <div>
+    <h1 class="m3-h1">RAG-EVDA Report</h1>
+    <p class="m3-lead">Target brand <b>{_esc(brand)}</b> analyzed across
+    <b>{_esc(', '.join(cfg['industry_topics']))}</b> with competitors
+    <b>{_esc(', '.join(cfg['competitor_entities']))}</b> &mdash; {ctx_stats.get('doc_count',0)} docs,
+    embedding <b>{_esc(data['meta']['embedding_kind'])}</b>.</p>
+  </div>
+</div>
+<div class="m3-divider"></div>
+<div class="m3-section-toc">
+  <a href="#kpis">KPI Summary</a>
+  <a href="#health">Brand Health</a>
+  <a href="#proximity">Vector Proximity</a>
+  <a href="#invisibility">Invisibility &amp; SoV</a>
+  <a href="#citation">Citation Audit</a>
+  <a href="#offpage">Off-Page Targets</a>
+  <a href="#provenance">Provenance</a>
+  <a href="#recs">Recommendations</a>
+  <a href="#method">Methodology</a>
+</div>
 {hw_banner}
 {verify_banner}
 
-<div class="kpis">
-  <div class="kpi"><div class="v" style="color:#e67e22">{inv_index}%</div>
-    <div class="l">RAG Invisibility Index</div></div>
-  <div class="kpi"><div class="v" style="color:#1abc9c">{sov}%</div>
-    <div class="l">Vector Share of Voice</div></div>
-  <div class="kpi"><div class="v">{ctx_stats.get('doc_count',0)}</div>
-    <div class="l">Retrieval Corpus Docs</div></div>
-  <div class="kpi"><div class="v">{len(cit['off_page_targets'])}</div>
-    <div class="l">Off-Page Targets</div></div>
-  <div class="kpi"><div class="v">{len(recs)}</div>
-    <div class="l">Recommendations</div></div>
+<div class="m3-grid" id="kpis">
+  <div class="m3-kpi"><div class="v warn">{inv_index}%</div><div class="l">RAG Invisibility Index</div></div>
+  <div class="m3-kpi"><div class="v good">{sov}%</div><div class="l">Vector Share of Voice</div></div>
+  <div class="m3-kpi"><div class="v">{ctx_stats.get('doc_count',0)}</div><div class="l">Retrieval Corpus Docs</div></div>
+  <div class="m3-kpi"><div class="v">{len(cit['off_page_targets'])}</div><div class="l">Off-Page Targets</div></div>
+  <div class="m3-kpi"><div class="v">{len(recs)}</div><div class="l">Recommendations</div></div>
 </div>
 
-<section><h2>⚠ Brand Health Issues — What You're Lacking</h2>
-<div class="issues">{issue_cards}</div></section>
+<section id="health"><h2 class="m3-h2">Brand Health Issues &mdash; What You're Lacking</h2>
+<div class="m3-grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">{issue_cards}</div></section>
 
-<section><h2>Semantic Vector Proximity (0.0–1.0)</h2>
-<table><thead><tr><th>Topic</th><th>Entity</th><th>Proximity</th>
+<section id="proximity"><h2 class="m3-h2">Semantic Vector Proximity (0.0&ndash;1.0)</h2>
+<table class="m3-table"><thead><tr><th>Topic</th><th>Entity</th><th>Proximity</th>
 <th>Label</th><th>#High-Rel Docs</th><th>Support (mentions)</th>
 <th>Confidence</th><th>Top Real Sources</th></tr></thead>
 <tbody>{prox_rows}</tbody></table>
-<div class="footer">Confidence = how many real corpus mentions back the score
-(high ≥ {cfg['confidence_min_support']} mentions). Low/none = the entity was rarely
+<div class="m3-footer">Confidence = how many real corpus mentions back the score
+(high &ge; {cfg['confidence_min_support']} mentions). Low/none = the entity was rarely
 present in the harvested corpus, so interpret with care. Red rows = brand is
-semantically "Far" from that topic.</div>
-</section>
+semantically "Far" from that topic.</div></section>
 
-<section><h2>Per-Topic RAG Invisibility &amp; Share of Voice</h2>
-<table><thead><tr><th>Topic</th><th>Rel. Docs</th><th>Brand Present</th>
+<section id="invisibility"><h2 class="m3-h2">Per-Topic RAG Invisibility &amp; Share of Voice</h2>
+<table class="m3-table"><thead><tr><th>Topic</th><th>Rel. Docs</th><th>Brand Present</th>
 <th>Competitor Present</th><th>Vector SoV %</th><th>Invisibility %</th><th>Threshold</th></tr></thead>
 <tbody>{inv_rows}</tbody></table>
-<div class="footer">"Threshold" is the auto-calibrated per-topic relevance cut
+<div class="m3-footer">"Threshold" is the auto-calibrated per-topic relevance cut
 (80th percentile of the harvested corpus similarity), so the metric tracks real
-signal instead of a fixed 0.70. Red = ≥50% invisible, amber = ≥25%.</div>
-</section>
+signal instead of a fixed 0.70. Red = &ge;50% invisible, amber = &ge;25%.</div></section>
 
-<section><h2>Entity Link vs. Mention Audit</h2>
-<table><thead><tr><th>Entity</th><th>Mentioned / Total</th><th>Linked</th>
+<section id="citation"><h2 class="m3-h2">Entity Link vs. Mention Audit</h2>
+<table class="m3-table"><thead><tr><th>Entity</th><th>Mentioned / Total</th><th>Linked</th>
 <th>Unlinked</th><th>Omitted</th><th>Mention Rate</th><th>Link Rate</th></tr></thead>
 <tbody>{ent_rows}</tbody></table>
-<div class="footer">Red rows = your brand is omitted from ≥50% of articles that cite competitors.</div></section>
+<div class="m3-footer">Red rows = your brand is omitted from &ge;50% of articles that cite competitors.</div></section>
 
-<section><h2>High-Density Off-Page Target List</h2>
-<table><thead><tr><th>#</th><th>URL</th><th>Source</th><th>Top Topic</th>
+<section id="offpage"><h2 class="m3-h2">High-Density Off-Page Target List</h2>
+<table class="m3-table"><thead><tr><th>#</th><th>URL</th><th>Source</th><th>Top Topic</th>
 <th>Relevance</th><th>Competitors Present</th></tr></thead>
 <tbody>{tgt_rows}</tbody></table></section>
 
-<section><h2>Data Provenance — Harvested Sources</h2>
-<table><thead><tr><th>#</th><th>Source</th><th>Type</th><th>Top Topic</th>
+<section id="provenance"><h2 class="m3-h2">Data Provenance &mdash; Harvested Sources</h2>
+<table class="m3-table"><thead><tr><th>#</th><th>Source</th><th>Type</th><th>Top Topic</th>
 <th>Relevance</th><th>Chars</th><th>HTTP</th><th>URL</th></tr></thead>
 <tbody>{prov_rows}</tbody></table>
-<div class="footer">Every metric above is computed from these real, locally-harvested
+<div class="m3-footer">Every metric above is computed from these real, locally-harvested
 web documents. "HTTP" = the status code of the live fetch (200 = verified retrieved;
 green rows are confirmed live pages). "Relevance" = cosine similarity to each
 document's most relevant topic (vs its auto-calibrated threshold). Content hashes and
-final URLs are stored in <code>sources.csv</code> / <code>report.json</code> so any
-number can be independently audited.</div>
-</section>
+final URLs are stored in <code class="m3-code">sources.csv</code> / <code class="m3-code">report.json</code> so any
+number can be independently audited.</div></section>
 
-<section><h2>Prioritized Recommendations</h2>{rec_html}</section>
+<section id="recs"><h2 class="m3-h2">Prioritized Recommendations</h2>{rec_html}</section>
 
 {adv_html}
 
-<section><h2>How the Tool Works — Methodology</h2>
+<section id="method"><h2 class="m3-h2">How the Tool Works &mdash; Methodology</h2>
 <details open><summary>Show / hide the four micro-engines &amp; what to do</summary>
 {methodology}</details></section>
 
-<div class="footer">{harvest_line}<br>
-Generated by RAG-EVDA — local, zero-cost vector intelligence. Scores are
+<div class="m3-footer">{harvest_line}<br>
+Generated by RAG-EVDA &mdash; local, zero-cost vector intelligence. Scores are
 model-derived estimates; verify outreach manually.</div>
 </div></body></html>"""
+
     return html_doc
 
 

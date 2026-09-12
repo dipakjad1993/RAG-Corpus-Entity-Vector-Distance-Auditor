@@ -59,10 +59,10 @@ def _linked_entities(raw_html: str, patterns: Dict[str, re.Pattern],
 
         soup = BeautifulSoup(raw_html, "lxml")
         for a in soup.find_all("a"):
-            txt = a.get_text(" ", strip=True).lower()
+            txt = a.get_text(" ", strip=True)
             href = (a.get("href") or "").lower()
-            for key in patterns:
-                if key and key in txt:
+            for key, pat in patterns.items():
+                if key and pat.search(txt):
                     found.add(alias_to_entity.get(key, key))
             if domain_map:
                 for ent, doms in domain_map.items():

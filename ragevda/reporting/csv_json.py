@@ -195,11 +195,21 @@ def _write_advanced_csvs(out_dir: str, data: Dict[str, Any],
     p = os.path.join(out_dir, "poisoning_sources.csv")
     _write_csv(p, [
         {"url": s.get("url"), "title": s.get("title"), "domain": s.get("domain"),
+         "source_type": s.get("source_type"),
          "poisoning_risk": s.get("poisoning_risk"),
          "risk_factors": s.get("risk_factors"),
+         "tokens": s.get("tokens"),
+         "outbound_links": s.get("outbound_links"),
+         "toxic_cluster_hits": s.get("toxic_cluster_hits"),
+         "link_ratio": s.get("link_ratio"),
+         "thin_score": s.get("thin_score"),
+         "repetition_score": s.get("repetition_score"),
+         "machine_score": s.get("machine_score"),
          "entities_co_cited": ";".join(s.get("entities_co_cited", []))}
         for s in pois_sources
-    ], ["url", "title", "domain", "poisoning_risk", "risk_factors",
+    ], ["url", "title", "domain", "source_type", "poisoning_risk",
+        "risk_factors", "tokens", "outbound_links", "toxic_cluster_hits",
+        "link_ratio", "thin_score", "repetition_score", "machine_score",
         "entities_co_cited"])
     paths["poisoning_sources"] = p
 

@@ -13,7 +13,9 @@ This detector scores every harvested source for *poisoning risk*:
   * off-topic entity adjacency: a source that co-cites the brand with toxic or
     unrelated concept clusters (debt, casino, VPN, weight-loss, "buy followers");
   * authority deficit: low outbound diversity (a page that only exists to link
-    out), no body substance after cleaning.
+    out), no body substance after cleaning;
+  * machine-generated repetition: unusually high n-gram self-repetition /
+    keyword stuffing that betrays a doorway or AI-generated link farm.
 
 The output is a risk-ranked list plus per-entity poisoning exposure, so a team
 can disavow / disassociate before it surfaces in AI answers.
@@ -23,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Dict, List
 
 from ..utils import get_logger
@@ -39,9 +41,20 @@ _TOXIC_CLUSTERS = [
     {"vpn", "crack", "serial-key", "torrent", "download-free"},
     {"adult", "dating", "escort", "hookup"},
     {"forex", "binary-options", "make-money-fast", "passive-income-scam"},
+    {"crypto", "bitcoin", "airdrop", "defi", "mint-nft", "token-presale"},
 ]
 _LINK_WORDS = {"click here", "read more", "check this out", "visit website",
-               "buy now", "order now", "limited offer", "act now"}
+               "buy now", "order now", "limited offer", "act now",
+               "discount code", "free trial now", "apply today"}
+
+# Phrases that indicate machine-generated doorway / boilerplate content rather
+# than genuine editorial substance.
+_GENERATED_PHRASES = [
+    "in conclusion", "to summarize", "in the fast-paced world", "in today's",
+    "if you're looking for", "you might be wondering", "it's important to note",
+    "in this article, we will explore", "remember to always", "overall, the",
+    "whether you're a beginner or an expert",
+]
 
 _HTML_LINK_RE = re.compile(r'''<a\b[^>]*href=["']([^"']+)''', re.IGNORECASE)
 
@@ -61,6 +74,28 @@ def _toxic_hits(text: str) -> int:
     return hits
 
 
+def _generated_phrase_hits(text: str) -> int:
+    low = text.lower()
+    return sum(1 for p in _GENERATED_PHRASES if p in low)
+
+
+def _repetition_ratio(tokens: List[str]) -> float:
+    """Fraud / doorway pages tend to repeat the same handful of keyword phrases.
+    Returns a 0..1 score for how repetitively a page uses its own vocabulary,
+    measured by the fraction of tokens that are repeats of a top repeated word.
+    """
+    if not tokens:
+        return 0.0
+    counts = Counter(tokens)
+    total = len(tokens)
+    # sum of all tokens minus the count of distinct words => repeated mass
+    repeated = sum(cnt for word, cnt in counts.items()
+                   if cnt > 1 and len(word) > 3)
+    # penalise top-heavy repetition more strongly
+    top = counts.most_common(1)[0][1]
+    return min(1.0, ( (repeated / total) * 0.6 ) + ( (top / total) * 0.4 ))
+
+
 def _thin_score(tokens: int, links: int) -> float:
     # Very short pages and pages that are mostly links are spammy.
     s = 0.0
@@ -75,6 +110,18 @@ def _thin_score(tokens: int, links: int) -> float:
     return min(1.0, s)
 
 
+def _machine_score(generated: int, repetition: float) -> float:
+    """Combine generated-phrase and repetition signals into a machine-quality
+    score (higher = more likely a machine-generated doorway page)."""
+    s = 0.0
+    if generated >= 3:
+        s += 0.5
+    elif generated >= 1:
+        s += 0.25
+    s += repetition * 0.5
+    return min(1.0, s)
+
+
 def analyze_poisoning(docs, config) -> Dict:
     """Score every source + entity exposure for vector-poisoning risk."""
     results: List[Dict] = []
@@ -85,6 +132,11 @@ def analyze_poisoning(docs, config) -> Dict:
         tokens = max(1, len(doc.text.split()))
         links = _link_count(doc.raw_html)
         toxic = _toxic_hits(doc.text)
+
+        word_tokens = re.findall(r"[a-z']+", text)
+        repetition = _repetition_ratio(word_tokens)
+        generated = _generated_phrase_hits(doc.text)
+        machine = _machine_score(generated, repetition)
 
         thin = _thin_score(tokens, links)
         spam_terms = sum(1 for w in _LINK_WORDS if w in text)
@@ -104,6 +156,11 @@ def analyze_poisoning(docs, config) -> Dict:
         if link_ratio > 0.10:
             risk += 0.2
             reasons.append(f"high link density ({link_ratio:.0%} of tokens)")
+        if machine >= 0.4:
+            risk += machine * 0.3
+            reasons.append(
+                f"machine-generated pattern (rep {repetition:.2f}, "
+                f"{generated} boilerplate phrase(s))")
 
         risk = round(min(1.0, risk), 3)
         is_spam = risk >= 0.5
@@ -131,6 +188,9 @@ def analyze_poisoning(docs, config) -> Dict:
             "toxic_cluster_hits": toxic,
             "link_ratio": round(link_ratio, 4),
             "thin_score": round(thin, 3),
+            "repetition_score": round(repetition, 3),
+            "generated_phrase_hits": generated,
+            "machine_score": round(machine, 3),
             "poisoning_risk": risk,
             "is_spam": is_spam,
             "risk_factors": "; ".join(reasons),
@@ -160,11 +220,32 @@ def analyze_poisoning(docs, config) -> Dict:
     if brand_exposure and brand_exposure["toxic_share_pct"] >= 40:
         status = "compromised"
 
+    # Brand-level machine-content signal: mean repetition/machine score across
+    # every source that co-cites the brand (not just the flagged/spam ones), so
+    # the brief can see whether the brand's co-citation neighbourhood skews
+    # toward programmatic doorway pages even before they trip the spam bar.
+    brand_machine_vals: List[float] = []
+    brand_rep_vals: List[float] = []
+    brand_generated_hits = 0
+    for s in results:
+        if brand in s["entities_co_cited"]:
+            brand_machine_vals.append(s["machine_score"])
+            brand_rep_vals.append(s["repetition_score"])
+            brand_generated_hits += s["generated_phrase_hits"]
+    brand_machine_agg = round(
+        (sum(brand_machine_vals) / len(brand_machine_vals)) if brand_machine_vals else 0.0, 3)
+    brand_rep_agg = round(
+        (sum(brand_rep_vals) / len(brand_rep_vals)) if brand_rep_vals else 0.0, 3)
+
     return {
         "sources": [r for r in results if r["is_spam"]][: config.top_n_recommendations * 2],
         "entity_exposure": exposure,
         "brand_poisoning_status": status,
         "toxic_source_count": sum(1 for r in results if r["is_spam"]),
         "total_sources": len(results),
-        "method": "thin-content + toxic-co-citation + link-density heuristic",
+        "brand_machine_score": brand_machine_agg,
+        "brand_repetition_score": brand_rep_agg,
+        "brand_generated_phrase_hits": brand_generated_hits,
+        "method": ("thin-content + toxic-co-citation + link-density + "
+                   "machine-generated-repetition heuristics"),
     }

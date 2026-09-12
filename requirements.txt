@@ -19,6 +19,18 @@ regex>=2023.0.0
 # Config / misc
 pyyaml>=6.0.0
 pandas>=2.0.0
+reportlab>=4.0.0
+
+# Web UI (required for `python -m ragevda.cli web`)
+flask>=3.0.0
+
+# Local ML models (required for real embeddings / sentiment / tokens)
+transformers>=4.38.0
+huggingface_hub>=0.20.0
+tokenizers>=0.15.0
+
+# Optional local PDF ground-truth ingestion (file harvester .pdf)
+pypdf>=4.0.0
 
 # Zero-cost search clients (optional but recommended)
 ddgs>=4.0.0

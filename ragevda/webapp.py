@@ -37,6 +37,8 @@ from .tracking import (load_runs, brands, runs_for_brand, diff_runs,
                         trend_chart, per_topic_trend_chart)
 from .scheduler import Scheduler, Schedule
 from .reporting import narrative as _narrative
+from .reporting import deep_analysis as _deep
+from .reporting.theme import get_style as _get_style
 
 logger = logging.getLogger("ragevda.webapp")
 
@@ -57,13 +59,20 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_OUTPUT = os.path.join(ROOT, "web_output")
 SCHEDULER = Scheduler()
 
+WEB_STYLE = _get_style("webapp")
+
 # Order matters: first matching keyword wins.
+# Note: the pipeline's own "audit complete" log line must NOT be mapped to 100 —
+# it can arrive while other worker threads are still flushing logs (which would
+# leave the bar at 100% + a stale stage while work continues). Only the wrapper
+# in _run_job() sets 100, strictly after run() returned.
 _PROGRESS_RULES = [
-    ("audit complete", 100, "Complete"),
-    ("wrote HTML dashboard", 98, "Generating dashboard"),
+    ("wrote HTML dashboard", 98, "Generating HTML dashboard"),
     ("wrote CSV", 96, "Generating CSV reports"),
     ("wrote JSON report", 94, "Generating JSON report"),
+    ("audit complete", 99, "Finalizing results"),
     ("context built", 85, "Building graphs & metrics"),
+    ("embedded", None, "Embedding documents"),  # special-cased below
     ("embedding", 80, "Embedding documents"),
     ("building analysis context", 75, "Analyzing semantics"),
     ("harvested", 72, "Corpus built"),
@@ -76,11 +85,15 @@ _PROGRESS_RULES = [
 
 
 def _progress_from_msg(job: Dict, msg: str) -> None:
+    if job.get("status") == "done":
+        # a late/flushed worker log must never move the bar off 100 or flip
+        # the stage after the audit already finished
+        return
     low = msg.lower()
     prog = job.get("progress", 0)
     stage = job.get("stage", "")
     for keyword, value, label in _PROGRESS_RULES:
-        if keyword in low:
+        if keyword.lower() in low:
             if keyword == "fetched":
                 m = re.search(r"fetched (\d+)/(\d+)", msg)
                 if m:
@@ -91,6 +104,13 @@ def _progress_from_msg(job: Dict, msg: str) -> None:
             if keyword == "raw results":
                 job["progress"] = min(35, prog + 3)
                 job["stage"] = "Harvesting search results"
+                return
+            if keyword == "embedded":
+                m = re.search(r"embedded (\d+)/(\d+)", msg)
+                if m:
+                    x, y = int(m.group(1)), int(m.group(2)) or 1
+                    job["progress"] = min(89, 80 + int(x / y * 9))
+                job["stage"] = "Embedding documents"
                 return
             if value is not None:
                 job["progress"] = max(prog, value)
@@ -129,179 +149,43 @@ INDEX_HTML = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RAG-EVDA — RAG Corpus Entity & Vector Distance Auditor</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap');
-:root{
-  --bg:#0b0e14; --bg2:#0e1320; --surface:#141a28; --surface2:#1b2233; --border:#28324c;
-  --text:#e8ecf4; --muted:#94a3c4; --accent:#6d8bff; --accent2:#34d399; --accent3:#a78bfa;
-  --good:#34d399; --warn:#fbbf24; --bad:#fb7185; --radius:16px;
-  --shadow:0 12px 34px rgba(0,0,0,.45); --shadow-sm:0 4px 16px rgba(0,0,0,.30);
-  --ring:0 0 0 4px rgba(109,139,255,.22);
-  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
-  --display:'Sora',var(--font);
-}
-* { box-sizing:border-box; }
-html,body{ height:100%; }
-body{
-  margin:0; color:var(--text); font-family:var(--font); font-size:14px; line-height:1.65;
-  -webkit-font-smoothing:antialiased; letter-spacing:.1px;
-  background:
-    radial-gradient(1200px 620px at 10% -12%, rgba(109,139,255,.14), transparent 60%),
-    radial-gradient(1000px 520px at 102% -4%, rgba(52,211,153,.10), transparent 55%),
-    var(--bg);
-}
-.wrap{ max-width:1080px; margin:0 auto; padding:28px 22px 60px; }
-.brand{ display:flex; gap:15px; align-items:flex-start; }
-.logo{ width:48px; height:48px; border-radius:14px; flex:0 0 auto;
-  background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#06121f;
-  font-family:var(--display); font-weight:800; font-size:18px; letter-spacing:-.5px;
-  display:flex; align-items:center; justify-content:center;
-  box-shadow:0 10px 24px rgba(52,211,153,.35); }
-.topbar{ display:flex; justify-content:space-between; align-items:flex-start; gap:16px;
-  flex-wrap:wrap; padding:8px 0 20px; border-bottom:1px solid var(--border); }
-header h1{ margin:0; font-family:var(--display); font-size:25px; font-weight:800; letter-spacing:-.4px;
-  background:linear-gradient(92deg,#cfe0ff,var(--accent) 42%,var(--accent2));
-  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-header p{ color:var(--muted); margin:10px 0 0; font-size:13.5px; max-width:760px; line-height:1.7; }
-.theme-btn{ background:rgba(255,255,255,.04); border:1px solid var(--border); color:var(--text);
-  border-radius:12px; padding:9px 14px; cursor:pointer; font-size:13px; backdrop-filter:blur(6px);
-  transition:.18s; }
-.theme-btn:hover{ border-color:var(--accent); transform:translateY(-1px); }
-.topnav{ display:flex; gap:10px; margin:18px 0 22px; flex-wrap:wrap; }
-.topnav a{ background:rgba(255,255,255,.03); border:1px solid var(--border); color:var(--text);
-  padding:9px 16px; border-radius:12px; font-size:13px; text-decoration:none; font-weight:600;
-  transition:.18s; }
-.topnav a:hover{ border-color:var(--accent); color:#fff; transform:translateY(-1px); box-shadow:var(--shadow-sm); }
-form{ margin-top:6px; }
-.card{ background:linear-gradient(180deg,var(--surface),var(--bg2)); border:1px solid var(--border);
-  border-radius:var(--radius); padding:18px 20px; margin-bottom:16px; box-shadow:var(--shadow-sm);
-  transition:.18s; }
-.card:hover{ border-color:rgba(109,139,255,.45); }
-.card label{ display:block; font-weight:700; font-size:13px; margin-bottom:7px; color:#dfe6f5; letter-spacing:.2px; }
-.card .hint{ color:var(--muted); font-size:12.5px; margin:-2px 0 12px; line-height:1.6; }
-input[type=text],input[type=number],textarea,select{ width:100%; background:var(--bg); color:var(--text);
-  border:1px solid var(--border); border-radius:12px; padding:11px 13px; font-size:14px;
-  font-family:inherit; transition:border-color .15s,box-shadow .15s; }
-input[type=text]:focus,input[type=number]:focus,textarea:focus,select:focus{ outline:none;
-  border-color:var(--accent); box-shadow:var(--ring); }
-textarea{ min-height:88px; resize:vertical; line-height:1.55; }
-.row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; }
-.row>div{ background:linear-gradient(180deg,var(--surface),var(--bg2)); border:1px solid var(--border);
-  border-radius:var(--radius); padding:16px 18px; box-shadow:var(--shadow-sm); }
-.row label{ display:block; font-weight:700; font-size:12px; margin-bottom:7px; color:#dfe6f5; }
-.adv-link,.adv{ background:none; border:none; color:var(--accent); cursor:pointer; font-size:13px;
-  padding:0; margin:6px 0 10px; font-weight:700; }
-.adv-panel{ margin-top:6px; }
-input[type=checkbox]{ width:auto; accent-color:var(--accent); }
-button[type=submit],.run-btn{ background:linear-gradient(92deg,var(--accent),var(--accent2));
-  color:#06121f; border:none; padding:13px 26px; border-radius:13px; font-size:15px; font-weight:800;
-  cursor:pointer; box-shadow:0 8px 22px rgba(52,211,153,.28); transition:.18s; letter-spacing:.2px; }
-button[type=submit]:hover,.run-btn:hover{ transform:translateY(-2px); filter:brightness(1.05);
-  box-shadow:0 12px 28px rgba(52,211,153,.38); }
-.howto{ background:linear-gradient(180deg,var(--surface),var(--bg2)); border:1px solid var(--border);
-  border-radius:var(--radius); padding:14px 20px; margin-bottom:18px; box-shadow:var(--shadow-sm); }
-.howto summary{ cursor:pointer; color:var(--accent); font-weight:700; font-size:14.5px; }
-.howto-body{ margin-top:12px; font-size:13px; color:#c9d3ea; line-height:1.7; }
-.howto-body p{ margin:8px 0; }
-.howto-body b{ color:#eef2fb; }
-#console{ background:#070a10; border:1px solid var(--border); border-radius:14px; padding:14px 16px;
-  height:240px; overflow:auto; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  font-size:12px; color:#8fd0ff; white-space:pre-wrap; line-height:1.55;
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.02); }
-.barwrap{ margin:14px 0 4px; }
-.barlabel{ display:flex; justify-content:space-between; font-size:12.5px; color:var(--muted);
-  margin-bottom:8px; font-weight:600; letter-spacing:.3px; }
-.bar{ background:var(--bg); border:1px solid var(--border); border-radius:99px; height:12px; overflow:hidden; }
-.barfill{ height:12px; width:0%; border-radius:99px;
-  background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:width .45s ease;
-  box-shadow:0 0 14px rgba(52,211,153,.5); }
-#status{ color:var(--muted); font-size:13px; margin-top:10px; }
-.err{ color:var(--bad); }
-#result{ margin-top:20px; }
-#result h2{ font-family:var(--display); border-left:4px solid var(--accent); padding-left:12px;
-  margin:0 0 12px; font-size:18px; }
-iframe{ width:100%; height:82vh; border:1px solid var(--border); border-radius:14px; background:#fff;
-  box-shadow:var(--shadow); }
-.links a{ color:var(--accent); margin-right:16px; font-size:13px; text-decoration:none; font-weight:600; }
-.links a:hover{ text-decoration:underline; }
-.stepper{ display:flex; gap:0; align-items:center; margin:6px 0 22px; flex-wrap:wrap; }
-.step{ display:flex; align-items:center; gap:10px; padding:10px 16px; border-radius:12px;
-  background:rgba(255,255,255,.03); border:1px solid var(--border); color:var(--muted);
-  font-weight:600; font-size:13px; }
-.step .num{ width:24px; height:24px; border-radius:50%; display:flex; align-items:center;
-  justify-content:center; background:var(--surface2); border:1px solid var(--border);
-  font-size:12px; font-weight:800; color:var(--muted); }
-.step.active{ border-color:var(--accent); color:var(--text); box-shadow:var(--ring); }
-.step.active .num{ background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#06121f; border-color:transparent; }
-.step.done .num{ background:var(--accent2); color:#06121f; border-color:transparent; }
-.step-sep{ flex:1 1 24px; height:1px; background:var(--border); margin:0 8px; min-width:24px; }
-.page{ display:none; }
-.page.active{ display:block; }
-.lead{ color:#c9d3ea; font-size:14px; line-height:1.7; margin:6px 0 14px; }
-.narrative h2,.outputs h2{ font-family:var(--display); font-size:18px; font-weight:700; color:var(--text);
-  margin:30px 0 12px; display:flex; align-items:center; gap:9px; }
-.narrative h2::before,.outputs h2::before{ content:""; width:4px; height:18px; border-radius:3px;
-  background:linear-gradient(180deg,var(--accent),var(--accent2)); }
-.feat-list{ display:grid; gap:14px; margin:14px 0; }
-.feat{ display:grid; grid-template-columns:54px 1fr; gap:16px; background:linear-gradient(180deg,var(--surface),var(--bg2));
-  border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; box-shadow:var(--shadow-sm); }
-.feat-num{ width:54px; height:54px; border-radius:14px; background:linear-gradient(135deg,var(--accent),var(--accent2));
-  color:#06121f; font-family:var(--display); font-weight:800; font-size:22px; display:flex; align-items:center;
-  justify-content:center; box-shadow:0 8px 18px rgba(52,211,153,.30); }
-.feat-body h3{ margin:0 0 6px; font-family:var(--display); font-size:15.5px; color:var(--text); }
-.feat-body p{ margin:0 0 8px; color:#c9d3ea; font-size:13px; line-height:1.65; }
-.feat-body ul{ margin:0 0 10px; padding-left:18px; color:#c9d3ea; font-size:13px; line-height:1.6; }
-.feat-metrics{ display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
-.chip{ background:var(--bg); border:1px solid var(--border); border-radius:99px; padding:5px 12px; font-size:12px; color:var(--muted); }
-.chip b{ color:var(--text); font-weight:800; margin-right:4px; }
-table.kv{ width:100%; border-collapse:separate; border-spacing:0; background:var(--surface);
-  border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; font-size:13px; }
-table.kv td{ padding:10px 14px; border-bottom:1px solid var(--border); vertical-align:top; }
-table.kv tr:last-child td{ border-bottom:none; }
-table.kv td:first-child{ color:var(--muted); width:46%; background:var(--surface2); font-weight:600; }
-.verify-card{ border-radius:var(--radius); border:1px solid var(--border); padding:16px 18px; margin:12px 0; }
-.verify-card.ok{ background:rgba(52,211,153,.08); border-color:var(--accent2); }
-.verify-card.partial{ background:rgba(251,191,36,.08); border-color:var(--warn); }
-.verify-head{ display:flex; align-items:center; gap:12px; margin-bottom:12px; font-weight:700; }
-.verify-badge{ background:linear-gradient(92deg,var(--accent),var(--accent2)); color:#06121f; border-radius:8px;
-  padding:4px 12px; font-size:12px; font-weight:800; }
-.verify-card.partial .verify-badge{ background:linear-gradient(92deg,var(--warn),#fb923c); }
-.verify-note{ color:var(--muted); font-size:12px; line-height:1.6; margin:10px 0 0; }
-.dl-row{ display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
-.dl{ background:linear-gradient(92deg,var(--accent),var(--accent2)); color:#06121f; text-decoration:none;
-  font-weight:800; padding:10px 16px; border-radius:12px; font-size:13px; box-shadow:0 8px 22px rgba(52,211,153,.26); transition:.18s; }
-.dl:hover{ transform:translateY(-1px); filter:brightness(1.05); }
-.nav-btns{ display:flex; gap:12px; margin-top:18px; }
-.btn-ghost{ background:rgba(255,255,255,.04); border:1px solid var(--border); color:var(--text); padding:11px 20px;
-  border-radius:12px; font-weight:700; cursor:pointer; font-size:14px; transition:.18s; }
-.btn-ghost:hover{ border-color:var(--accent); }
-/* Light theme */
-body.light{ --bg:#f5f8fc; --bg2:#ffffff; --surface:#ffffff; --surface2:#eef2f8; --border:#dde4ef;
-  --text:#0f172a; --muted:#5b6b86; --shadow:0 12px 34px rgba(20,40,80,.10);
-  --shadow-sm:0 4px 16px rgba(20,40,80,.08); --ring:0 0 0 4px rgba(109,139,255,.20); }
-body.light header h1{ background:linear-gradient(92deg,#1e3a8a,var(--accent) 46%,#0f766e);
-  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-body.light .card,body.light .row>div{ box-shadow:var(--shadow-sm); }
-body.light #console{ color:#9fd0ff; }
-body.light .lead,body.light .feat-body p,body.light .narrative p,body.light .outputs p,body.light .feat-body li,
-body.light .verify-note{ color:#334155; }
-body.light .chip{ color:#5b6b86; }
-body.light .feat{ background:linear-gradient(180deg,#ffffff,#f5f8fc); }
-body.light table.kv td:first-child{ background:#eef2f8; }
+__M3_STYLE__
+/* ---- web app specific polish ---- */
+.m3-app-inner{max-width:1180px}
+.card{background:var(--m3-surface-container-low); border:1px solid var(--m3-outline-variant);
+  border-radius:var(--m3-shape-m); padding:18px 20px; margin-bottom:16px; box-shadow:var(--m3-shadow-1)}
+.card label.m3-fieldlabel,.card label{display:block; font-weight:600; font-size:13px; margin:0 0 6px; color:var(--m3-on-surface)}
+.card .hint{color:var(--m3-on-surface-variant); font-size:12px; margin:-2px 0 12px; line-height:1.6}
+.card .row{display:flex; gap:12px; margin-top:12px; flex-wrap:wrap; align-items:flex-end}
+.m3-nav a.on{background:var(--m3-secondary-container); color:var(--m3-on-secondary-container)}
+.nav-btns{display:flex; gap:12px; margin-top:20px}
+.err{color:var(--m3-error)}
+iframe{width:100%; height:82vh; border:1px solid var(--m3-outline-variant);
+  border-radius:var(--m3-shape-m); background:#fff; box-shadow:var(--m3-shadow-2)}
+.m3-adv{display:inline-flex; align-items:center; gap:8px; background:none; border:none;
+  color:var(--m3-primary); font-weight:700; font-size:14px; cursor:pointer; padding:6px 0; font-family:var(--m3-font)}
+#result{margin-top:20px}
 </style></head>
-<body><div class="wrap">
-<nav class="topnav"><a href="/">🏠 Audit</a><a href="/history">📈 History &amp; Trends</a><a href="/schedules">⏱ Schedules</a></nav>
-<div class="topbar"><div class="brand">
-  <div class="logo">EV</div>
-  <header>
-    <h1>RAG Corpus Entity &amp; Vector Distance Auditor</h1>
-    <p>Local, zero-cost vector intelligence. Fill the five inputs, run the audit,
-       and get real proximity scores, the RAG Invisibility Index, off-page targets
-       and prioritized recommendations. No OpenAI / Ahrefs / Semrush keys.</p>
-  </header>
-</div>
-<button class="theme-btn" id="themeBtn">🌙 Dark</button></div>
+<body>
+<div class="m3-app-bar"><div class="m3-app-inner">
+  <div class="m3-logo">EV</div>
+  <div class="m3-title">RAG-EVDA
+    <small>RAG Corpus Entity &amp; Vector Distance Auditor</small>
+  </div>
+  <nav class="m3-nav">
+    <a href="/" class="on">Audit</a>
+    <a href="/history">History &amp; Trends</a>
+    <a href="/schedules">Schedules</a>
+  </nav>
+  <button class="m3-btn outlined" id="themeBtn">🌙 Theme</button>
+</div></div>
 
-<div class="stepper">
+<div class="m3-container">
+<p class="m3-lead">Local, zero-cost vector intelligence. Fill the five inputs, run the
+audit, and get real proximity scores, the RAG Invisibility Index, off-page targets
+and prioritized recommendations. No OpenAI / Ahrefs / Semrush keys.</p>
+
+<div class="step-wrap">
   <div class="step active" id="step1"><span class="num">1</span> Inputs</div>
   <div class="step-sep"></div>
   <div class="step" id="step2"><span class="num">2</span> Analysis</div>
@@ -312,73 +196,79 @@ body.light table.kv td:first-child{ background:#eef2f8; }
 <div id="page-inputs" class="page active">
 <form id="auditForm">
   <div class="card">
-    <label>1) Target Brand Name</label>
-    <div class="hint">The precise name of your brand or site (e.g. "Acme Software").</div>
-    <input type="text" name="target_brand" placeholder="Acme Software" required>
+    <label class="m3-fieldlabel">1) Target Brand Name</label>
+    <div class="hint">Enter your brand name <b>or a business / website URL</b> — then click
+      <b>Auto-Detect</b> and the tool will fetch the live site, identify your industry topics,
+      competitors, locality and settings, and fill every field below automatically.</div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input type="text" name="target_brand" placeholder="YourBrand or https://yoursite.com" required class="m3-input" style="flex:1;min-width:260px">
+      <button type="button" class="m3-btn" id="probeBtn">🔍 Auto-Detect</button>
+    </div>
+    <div id="probeStatus" class="hint" style="margin-top:8px;display:none"></div>
   </div>
 
-    <div class="card">
-      <label>2) Target Industry Topics / Concepts</label>
-      <div class="hint">Any number of high-value contextual topics or seed keywords — no limit. One per line or comma-separated.</div>
-      <textarea name="industry_topics" placeholder="enterprise churn prediction&#10;SaaS pipeline analytics&#10;CRM automation" required></textarea>
-    </div>
+  <div class="card">
+    <label class="m3-fieldlabel">2) Target Industry Topics / Concepts</label>
+    <div class="hint">Any number of high-value contextual topics or seed keywords — no limit. One per line or comma-separated.</div>
+    <textarea name="industry_topics" class="m3-input" placeholder="your primary industry topic&#10;your secondary topic&#10;your tertiary topic" required></textarea>
+  </div>
 
-    <div class="card">
-      <label>3) Competitor Entities</label>
-      <div class="hint">Any number of direct competitor brand names — no limit. One per line or comma-separated.</div>
-      <textarea name="competitor_entities" placeholder="Salesforce&#10;HubSpot&#10;Zendesk" required></textarea>
-    </div>
+  <div class="card">
+    <label class="m3-fieldlabel">3) Competitor Entities</label>
+    <div class="hint">Any number of direct competitor brand names — no limit. One per line or comma-separated.</div>
+    <textarea name="competitor_entities" class="m3-input" placeholder="CompetitorA&#10;CompetitorB&#10;CompetitorC" required></textarea>
+  </div>
 
-  <div class="row">
+  <div class="m3-field-grid">
     <div class="card">
-      <label>4) Crawl Depth</label>
+      <label class="m3-fieldlabel">4) Crawl Depth</label>
       <div class="hint">Pages / results to scrape per query (e.g. 50 or 100).</div>
-      <input type="number" name="crawl_depth" value="50" min="1" max="200">
+      <input type="number" name="crawl_depth" value="50" min="1" max="200" class="m3-input">
     </div>
     <div class="card">
-      <label>5) Locality (optional)</label>
+      <label class="m3-fieldlabel">5) Locality (optional)</label>
       <div class="hint">Region / country code for local SEO (e.g. US, UK, Detroit). Leave blank for global.</div>
-      <input type="text" name="locality" placeholder="US">
+      <input type="text" name="locality" placeholder="US" class="m3-input">
     </div>
   </div>
 
   <div class="card">
-    <div class="adv" id="advToggle">▸ Advanced options (harvester, models)</div>
+    <button type="button" class="m3-adv" id="advToggle">▸ Advanced options (harvester, models)</button>
     <div id="advPanel" style="display:none; margin-top:14px;">
-      <div class="row">
+      <div class="m3-field-grid">
         <div>
-          <label>Harvester</label>
-          <select name="harvester">
+          <label class="m3-fieldlabel">Harvester</label>
+          <select name="harvester" class="m3-input">
             <option value="duckduckgo" selected>DuckDuckGo (live, free)</option>
             <option value="searxng">SearXNG (self-hosted)</option>
             <option value="file">Local corpus folder</option>
           </select>
-          <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:#9aa6c4">
+          <label class="m3-check" style="margin-top:10px">
             <input type="checkbox" name="prefer_searxng"> Prefer SearXNG (use my SearXNG URL as the primary live search when set)
           </label>
         </div>
       </div>
-      <div class="row" style="margin-top:12px;">
+      <div class="m3-field-grid">
         <div>
-          <label>SearXNG base URL</label>
-          <input type="text" name="searxng_base_url" placeholder="http://localhost:8080">
+          <label class="m3-fieldlabel">SearXNG base URL</label>
+          <input type="text" name="searxng_base_url" placeholder="http://localhost:8080" class="m3-input">
         </div>
       </div>
-      <div style="margin-top:12px; display:flex; gap:18px; align-items:center;">
-        <label style="margin:0;"><input type="checkbox" name="auto_threshold" checked> Auto-calibrate relevance threshold (recommended)</label>
+      <div style="margin-top:12px; display:flex; gap:20px; align-items:center; flex-wrap:wrap">
+        <label class="m3-check"><input type="checkbox" name="auto_threshold" checked> Auto-calibrate relevance threshold (recommended)</label>
         <div>
-          <label>Manual threshold (if unchecked)</label>
-          <input type="number" name="high_relevance_threshold" value="0.70" min="0.1" max="0.95" step="0.05" style="width:100px; display:inline-block;">
+          <label class="m3-fieldlabel">Manual threshold (if unchecked)</label>
+          <input type="number" name="high_relevance_threshold" value="0.70" min="0.1" max="0.95" step="0.05" style="width:110px;" class="m3-input">
         </div>
       </div>
-      <div style="margin-top:12px;">
-        <label>spaCy model</label>
-        <input type="text" name="spacy_model" value="en_core_web_sm">
+      <div style="margin-top:12px">
+        <label class="m3-fieldlabel">spaCy model</label>
+        <input type="text" name="spacy_model" value="en_core_web_sm" class="m3-input">
       </div>
-      <div class="row" style="margin-top:12px;">
+      <div class="m3-field-grid" style="margin-top:12px">
         <div>
-          <label>Search intent</label>
-          <select name="search_intent">
+          <label class="m3-fieldlabel">Search intent</label>
+          <select name="search_intent" class="m3-input">
             <option value="informational" selected>Informational</option>
             <option value="commercial">Commercial</option>
             <option value="navigational">Navigational</option>
@@ -388,110 +278,99 @@ body.light table.kv td:first-child{ background:#eef2f8; }
           </select>
         </div>
         <div>
-          <label>AI-engine matrix (comma-separated)</label>
-          <input type="text" name="engine_matrix" value="Google AI Overviews, SearchGPT, Gemini, Perplexity, Bing Copilot">
+          <label class="m3-fieldlabel">AI-engine matrix (comma-separated)</label>
+          <input type="text" name="engine_matrix" value="Google AI Overviews, SearchGPT, Gemini, Perplexity, Bing Copilot" class="m3-input">
         </div>
       </div>
-      <div class="row" style="margin-top:12px;">
+      <div class="m3-field-grid" style="margin-top:12px">
         <div>
-          <label>7) Custom Entity Weighting / Ontology Mapping</label>
-          <div class="hint" style="margin:2px 0 8px;font-size:12px;">
-            One per line: <code>Entity|weight</code> (weight &gt; 0, default 1) to
-            prioritise an entity in retrieval scoring, then
-            <code>Entity|alias1,alias2</code> for sub-brands / product / patent names.</div>
-          <textarea name="entity_weighting" placeholder="Acme Software|1.5&#10;Salesforce|1.0&#10;Acme Cloud|Acme Software"></textarea>
+          <label class="m3-fieldlabel">7) Custom Entity Weighting / Ontology Mapping</label>
+          <div class="hint" style="margin:2px 0 8px;font-size:12px;">One per line: <code class="m3-code">Entity|weight</code> (weight &gt; 0, default 1) then <code class="m3-code">Entity|alias1,alias2</code> for sub-brands / product / patent names.</div>
+          <textarea name="entity_weighting" class="m3-input" placeholder="YourBrand|1.5&#10;CompetitorA|1.0&#10;YourBrand Pro|YourBrand"></textarea>
         </div>
         <div>
-          <label>6) Query Templates for Search Intent (format: intent|pattern)</label>
-          <div class="hint" style="margin:2px 0 8px;font-size:12px;">
-            One per line, <code>{topic}</code> / <code>{brand}</code> are substituted,
-            e.g. <code>transactional|best {topic} software</code>.</div>
-          <textarea name="query_templates" placeholder="transactional|best {topic} software&#10;comparison|{brand} vs {competitor}"></textarea>
+          <label class="m3-fieldlabel">6) Query Templates for Search Intent (format: intent|pattern)</label>
+          <div class="hint" style="margin:2px 0 8px;font-size:12px;">One per line, <code class="m3-code">{topic}</code> / <code class="m3-code">{brand}</code> substituted, e.g. <code class="m3-code">transactional|best {topic} software</code>.</div>
+          <textarea name="query_templates" class="m3-input" placeholder="transactional|best {topic} options&#10;comparison|{brand} vs alternatives"></textarea>
         </div>
       </div>
-      <div class="row" style="margin-top:12px;">
+      <div class="m3-field-grid" style="margin-top:12px">
         <div>
-          <label>10) Search-Engine Scraping Footprints (SERP snippet types)</label>
-          <div class="hint" style="margin:2px 0 8px;font-size:12px;">
-            Specific source URLs surfaced by an AI engine, ingested separately.
-            Format: <code>engine|label|url</code>.</div>
-          <textarea name="serp_footprints" placeholder="Google AI Overviews|industry survey|https://example.com/research&#10;Perplexity|guide|https://example.com/guide"></textarea>
+          <label class="m3-fieldlabel">10) Search-Engine Scraping Footprints (SERP snippet types)</label>
+          <div class="hint" style="margin:2px 0 8px;font-size:12px;">Specific source URLs surfaced by an AI engine, ingested separately. Format: <code class="m3-code">engine|label|url</code>.</div>
+          <textarea name="serp_footprints" class="m3-input" placeholder="Google AI Overviews|industry survey|https://research.example.com/path&#10;Perplexity|guide|https://guide.example.com/path"></textarea>
         </div>
         <div>
-          <label>8) Historical Ground-Truth Corpora (internal brand docs)</label>
-          <div class="hint" style="margin:2px 0 8px;font-size:12px;">
-            PDF / whitepaper / Markdown file paths so the tool can compare the
-            Internal Brand Perception Vector vs the Web RAG Vector. One per line.</div>
-          <textarea name="corpus_files" placeholder="C:\docs\acme-whitepaper.pdf&#10;C:\docs\product-specs.txt"></textarea>
+          <label class="m3-fieldlabel">8) Historical Ground-Truth Corpora (internal brand docs)</label>
+          <div class="hint" style="margin:2px 0 8px;font-size:12px;">PDF / whitepaper / Markdown file paths so the tool compares Internal Brand Perception Vector vs Web RAG Vector. One per line.</div>
+          <textarea name="corpus_files" class="m3-input" placeholder="C:\docs\your-whitepaper.pdf&#10;C:\docs\product-specs.txt"></textarea>
         </div>
       </div>
-      <div class="row" style="margin-top:12px;">
+      <div class="m3-field-grid" style="margin-top:12px">
         <div>
-          <label>11) Competitor Content Change Logs — RSS / sitemap feeds</label>
+          <label class="m3-fieldlabel">11) Competitor Content Change Logs — RSS / sitemap feeds</label>
           <div class="hint" style="margin:2px 0 8px;font-size:12px;">Competitor / industry feeds ingested in near-real-time for freshness.</div>
-          <textarea name="content_feeds" placeholder="https://competitor.com/feed.xml&#10;https://competitor.com/sitemap.xml"></textarea>
+          <textarea name="content_feeds" class="m3-input" placeholder="https://competitor.com/feed.xml&#10;https://competitor.com/sitemap.xml"></textarea>
         </div>
         <div>
-          <label>11b) Local corpus directory (ground-truth folder)</label>
+          <label class="m3-fieldlabel">11b) Local corpus directory (ground-truth folder)</label>
           <div class="hint" style="margin:2px 0 8px;font-size:12px;">Alternative to per-file list — point at an entire internal docs folder.</div>
-          <input type="text" name="corpus_dir" placeholder="./sample_corpus">
+          <input type="text" name="corpus_dir" class="m3-input" placeholder="C:\docs\ground-truth">
         </div>
       </div>
-      <div class="row" style="margin-top:12px;">
+      <div class="m3-field-grid" style="margin-top:12px">
         <div>
-          <label>Synthetic query count</label>
-          <input type="number" name="synthetic_query_count" value="12" min="0" max="100">
+          <label class="m3-fieldlabel">Synthetic query count</label>
+          <input type="number" name="synthetic_query_count" value="12" min="0" max="100" class="m3-input">
         </div>
         <div>
-          <label>Chunk/target density settings</label>
-          <div style="display:flex;gap:8px;">
-            <input type="number" name="chunk_tokens" value="512" min="64" max="8192" title="Chunk tokens">
-            <input type="number" name="target_entity_density" value="0.015" step="0.001" min="0" max="1" title="Target entity density">
-            <input type="number" name="top_k_retrieval" value="5" min="1" max="50" title="Top-k retrieval">
+          <label class="m3-fieldlabel">Chunk / density settings</label>
+          <div style="display:flex;gap:8px">
+            <input class="m3-input" type="number" name="chunk_tokens" value="512" min="64" max="8192" title="Chunk tokens" style="width:110px">
+            <input class="m3-input" type="number" name="target_entity_density" value="0.015" step="0.001" min="0" max="1" title="Target entity density" style="width:110px">
+            <input class="m3-input" type="number" name="top_k_retrieval" value="5" min="1" max="50" title="Top-k retrieval" style="width:90px">
           </div>
-          <div class="hint" style="margin:4px 0 0;font-size:11px;">chunk tokens · target entity density · top-k</div>
+          <div class="hint" style="margin:4px 0 0;font-size:11px;">chunk tokens · target density · top-k</div>
         </div>
       </div>
-      <div class="row" style="margin-top:12px;">
+      <div class="m3-field-grid" style="margin-top:12px">
         <div>
-          <label>9) Target Embedding Model Selection</label>
-          <input type="text" name="embedding_model" value="sentence-transformers/all-MiniLM-L6-v2">
-          <div class="hint" style="margin:4px 0 0;font-size:11px;">
-            Pick the embedding architecture matching the AI engine's vector space
-            (e.g. <code>bge-large-en-v1.5</code>, <code>all-MiniLM-L6-v2</code>).
-            Operator is responsible for supplying a local model.</div>
+          <label class="m3-fieldlabel">9) Target Embedding Model Selection</label>
+          <input type="text" name="embedding_model" value="sentence-transformers/all-MiniLM-L6-v2" class="m3-input">
+          <div class="hint" style="margin:4px 0 0;font-size:11px;">Pick the embedding architecture matching the AI engine's vector space (e.g. <code class="m3-code">bge-large-en-v1.5</code>, <code class="m3-code">all-MiniLM-L6-v2</code>). Operator supplies a local model.</div>
         </div>
         <div>
-          <label>Ollama model (optional local LLM)</label>
-          <input type="text" name="ollama_model" value="llama3">
+          <label class="m3-fieldlabel">Ollama model (optional local LLM)</label>
+          <input type="text" name="ollama_model" value="llama3" class="m3-input">
           <div class="hint" style="margin:4px 0 0;font-size:11px;">Ollama base URL:</div>
-          <input type="text" name="ollama_base_url" placeholder="http://localhost:11434">
+          <input type="text" name="ollama_base_url" placeholder="http://localhost:11434" class="m3-input">
         </div>
       </div>
     </div>
   </div>
 
-  <button type="submit" class="primary" id="runBtn">▶ Run Full Audit</button>
+  <button type="submit" class="m3-btn" id="runBtn">▶ Run Full Audit</button>
   <div id="status"></div>
 
-  <div class="barwrap" id="barwrap" style="display:none">
-    <div class="barlabel"><span id="stage">Initializing…</span><span id="timer">00:00</span></div>
-    <div class="bar"><div class="barfill" id="barfill"></div></div>
+  <div class="m3-progress-block" id="barwrap" style="display:none">
+    <div class="m3-barlabel"><span id="stage">Initializing…</span><span id="timer">00:00</span></div>
+    <div class="m3-progress-track"><div class="m3-progress-fill" id="barfill"></div></div>
   </div>
 
-  <div id="console"></div>
+  <div class="m3-console" id="console" style="display:none"></div>
 </form>
 </div>
 
 <div id="page-features" class="page"></div>
 <div id="page-outputs" class="page"></div>
+<div id="result"></div>
 
 <script>
 // ---- theme toggle ----
 const themeBtn = document.getElementById('themeBtn');
 function applyTheme(t){
   if(t==='light'){ document.body.classList.add('light'); themeBtn.textContent='☀️ Light'; }
-  else { document.body.classList.remove('light'); themeBtn.textContent='🌙 Dark'; }
+  else { document.body.classList.remove('light'); themeBtn.textContent='🌙 Theme'; }
 }
 applyTheme(localStorage.getItem('ragevda-theme')||'dark');
 themeBtn.onclick = () => {
@@ -507,6 +386,84 @@ adv.onclick = () => {
 };
 
 function splitList(s){ return s.split(/[\n,]/).map(x=>x.trim()).filter(Boolean); }
+
+// ---- Auto-Detect: fetch the submitted URL/brand and fill ALL fields ----
+const probeBtn=document.getElementById('probeBtn');
+const probeStatus=document.getElementById('probeStatus');
+function setProbeStatus(html, ok){
+  probeStatus.innerHTML=html;
+  probeStatus.style.display='block';
+  probeStatus.style.color = ok ? 'var(--m3-tertiary)' : 'var(--m3-error)';
+}
+function fillField(name, value){
+  const el=document.querySelector('[name="'+name+'"]');
+  if(!el) return false;
+  const type=(el.getAttribute('type')||'text').toLowerCase();
+  const tag=el.tagName.toUpperCase();
+  if(type==='checkbox'){
+    if(value){ el.checked=true; }
+  } else if(tag==='SELECT'){
+    if([].slice.call(el.options).some(o=>o.value===String(value))){ el.value=String(value); }
+  } else if(type==='number'){
+    if(value!=null && value!==''){ el.value=String(value); }
+  } else {
+    el.value = value==null ? '' : String(value);
+  }
+  // open the advanced panel whenever an advanced-only field gets filled
+  const core=['target_brand','industry_topics','competitor_entities','crawl_depth','locality'];
+  if(core.indexOf(name)<0){
+    const p=document.getElementById('advPanel');
+    if(p && p.style.display==='none'){
+      p.style.display='block';
+      document.getElementById('advToggle').textContent='▾ Advanced options (harvester, models)';
+    }
+  }
+  el.dispatchEvent(new Event('change',{bubbles:true}));
+  return true;
+}
+async function runProbe(){
+  const input=document.querySelector('[name="target_brand"]').value.trim();
+  if(!input){ setProbeStatus('Enter a brand or URL first.', false); return; }
+  probeBtn.disabled=true;
+  setProbeStatus('🔍 Analyzing your site & searching the web… (may take ~10-20s)', true);
+  try{
+    const resp=await fetch('/api/probe',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({query:input})});
+    const d=await resp.json();
+    if(d.error){ setProbeStatus('Detect failed: '+d.error, false); probeBtn.disabled=false; return; }
+    // Fill EVERY returned field that has a matching form element.
+    const known=['target_brand','industry_topics','competitor_entities','crawl_depth',
+      'locality','harvester','prefer_searxng','searxng_base_url','auto_threshold',
+      'high_relevance_threshold','search_intent','spacy_model','embedding_model',
+      'engine_matrix','entity_weighting','ontology_aliases','query_templates',
+      'serp_footprints','content_feeds','corpus_files','corpus_dir','chunk_tokens',
+      'chunk_overlap_tokens','target_entity_density','top_k_retrieval',
+      'synthetic_query_count','ollama_base_url','ollama_model'];
+    let filled=[], skipped=[];
+    for(const key of Object.keys(d)){
+      if(key.indexOf('_')===0) continue;
+      if(known.indexOf(key)<0) continue;
+      if(fillField(key, d[key])) filled.push(key); else skipped.push(key);
+    }
+    const detested = {brand:d.target_brand,
+      topics:(d.industry_topics||'').split('\n').filter(Boolean).length,
+      comps:(d.competitor_entities||'').split('\n').filter(Boolean).length,
+      locality:d.locality||'auto'};
+    let note='';
+    if(d._meta){ const m=d._meta; note=' — source: '+(m.title||m.domain||'web')+' · '+(m.note||''); }
+    const missing = ['corpus_dir','corpus_files'].filter(k=>{
+      const el=document.querySelector('[name="'+k+'"]'); return el && (!el.value||!el.value.trim());
+    });
+    let msg='✅ Detected brand "'+detested.brand+'" with '+detested.topics+' topics & '+
+      detested.comps+' competitors (locality '+detested.locality+'). '+filled.length+'/'+known.length+' fields auto-filled.'+note;
+    if(missing.length) msg+=' · <b>Add manually:</b> '+missing.join(', ')+' (internal paths)';
+    setProbeStatus(msg, true);
+  }catch(err){ setProbeStatus('Detect error: '+err, false); }
+  probeBtn.disabled=false;
+}
+probeBtn.addEventListener('click', runProbe);
+document.querySelector('[name="target_brand"]').addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); runProbe(); } });
 
 let pollTimer=null, startTs=0, tickTimer=null;
 function fmt(sec){ const m=String(Math.floor(sec/60)).padStart(2,'0'); const s=String(sec%60).padStart(2,'0'); return m+':'+s; }
@@ -583,8 +540,8 @@ function loadFeatures(jobId){
   el.innerHTML='<div class="card">Loading analysis…</div>';
   setStep('step1','done'); setStep('step2','active');
   el.classList.add('active');
-  fetch('/page/features/'+jobId).then(r=>r.text()).then(h=>{
-    el.innerHTML = h + '<div class="nav-btns"><button class="btn-ghost" onclick="loadOutputs(\''+jobId+'\')">Continue to Outputs →</button></div>';
+  fetch('/page/analysis/'+jobId).then(r=>r.text()).then(h=>{
+    el.innerHTML = h + '<div class="nav-btns"><button class="m3-btn outlined" onclick="loadOutputs(\''+jobId+'\')">Continue to Outputs →</button></div>';
     window.scrollTo(0,0);
   }).catch(()=>{ el.innerHTML='<div class="card err">Failed to load analysis.</div>'; });
 }
@@ -596,20 +553,21 @@ function loadOutputs(jobId){
   document.getElementById('page-features').classList.remove('active');
   el.classList.add('active');
   fetch('/page/outputs/'+jobId).then(r=>r.text()).then(h=>{
-    el.innerHTML = h + '<div class="nav-btns"><button class="btn-ghost" onclick="backToFeatures()">← Back to Analysis</button></div>';
+    el.innerHTML = h + '<div class="nav-btns"><button class="m3-btn outlined" onclick="backToFeatures()">← Back to Analysis</button></div>';
     window.scrollTo(0,0);
   }).catch(()=>{ el.innerHTML='<div class="card err">Failed to load outputs.</div>'; });
 }
 
 function backToFeatures(){
-  setStep('step3',''); 
+  setStep('step3','');
   document.getElementById('page-outputs').classList.remove('active');
   setStep('step2','active');
   document.getElementById('page-features').classList.add('active');
   window.scrollTo(0,0);
 }
 </script>
-</body></html>"""
+</div></body></html>
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -708,6 +666,7 @@ def _start_run(profile: dict) -> str:
         query_templates=query_templates,
         ontology_aliases=ontology,
         entity_weighting=entity_weights,
+        entity_domains={},
         content_feeds=feed_list,
         serp_footprints=serp_footprints,
         chunk_tokens=_int(profile.get("chunk_tokens"), 512),
@@ -717,10 +676,16 @@ def _start_run(profile: dict) -> str:
         engine_matrix=engine_list,
         ollama_base_url=profile.get("ollama_base_url") or None,
         ollama_model=profile.get("ollama_model") or "llama3",
+        use_llm=bool(profile.get("use_llm", True)),
         synthetic_query_count=_int(profile.get("synthetic_query_count"), 12),
+        max_pages=_int(profile.get("max_pages"), 200),
+        max_search_queries=_int(profile.get("max_search_queries"), 120),
+        dedupe_near=bool(profile.get("dedupe_near", True)),
+        require_real_models=bool(profile.get("require_real_models", True)),
+        drift_history_keep=_int(profile.get("drift_history_keep"), 60),
         output_dir=os.path.join(WEB_OUTPUT, "jobs", "temp"),
     )
-    job_id = datetime.utcnow().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
+    job_id = datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
     job_dir = os.path.join(WEB_OUTPUT, "jobs", job_id)
     os.makedirs(job_dir, exist_ok=True)
     cfg.output_dir = job_dir
@@ -732,67 +697,52 @@ def _start_run(profile: dict) -> str:
     return job_id
 
 
-_PAGE_CSS = """
-:root{
-  --bg:#0b0e14; --bg2:#0e1320; --surface:#141a28; --surface2:#1b2233; --border:#28324c;
-  --text:#e8ecf4; --muted:#94a3c4; --accent:#6d8bff; --accent2:#34d399;
-  --good:#34d399; --warn:#fbbf24; --bad:#fb7185; --radius:16px;
-  --shadow:0 12px 34px rgba(0,0,0,.45); --shadow-sm:0 4px 16px rgba(0,0,0,.30);
-  --ring:0 0 0 4px rgba(109,139,255,.22);
-  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
-  --display:'Sora',var(--font);
-}
-* { box-sizing:border-box; }
-body{ margin:0; color:var(--text); font-family:var(--font); font-size:14px; line-height:1.65;
-  -webkit-font-smoothing:antialiased; letter-spacing:.1px;
-  background:
-    radial-gradient(1200px 620px at 10% -12%, rgba(109,139,255,.14), transparent 60%),
-    radial-gradient(1000px 520px at 102% -4%, rgba(52,211,153,.10), transparent 55%),
-    var(--bg); }
-.wrap{ max-width:1120px; margin:0 auto; padding:26px 24px 56px; }
-.topnav{ display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
-.topnav a{ background:rgba(255,255,255,.03); border:1px solid var(--border); color:var(--text);
-  padding:9px 16px; border-radius:12px; font-size:13px; text-decoration:none; font-weight:600; transition:.18s; }
-.topnav a:hover{ border-color:var(--accent); color:#fff; transform:translateY(-1px); box-shadow:var(--shadow-sm); }
-h2{ display:flex; align-items:center; gap:9px; font-family:var(--display); font-size:18px; font-weight:700;
-  color:var(--text); margin:30px 0 12px; letter-spacing:-.2px; }
-h2::before{ content:""; width:4px; height:18px; border-radius:3px;
-  background:linear-gradient(180deg,var(--accent),var(--accent2)); }
-section{ margin:0; }
-table{ width:100%; border-collapse:separate; border-spacing:0; margin-top:10px; font-size:13px;
-  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
-th,td{ text-align:left; padding:11px 13px; border-bottom:1px solid var(--border); vertical-align:top; }
-th{ color:var(--muted); text-transform:uppercase; font-size:10.5px; letter-spacing:.6px;
-  background:var(--surface2); font-weight:600; }
-tbody tr:last-child td{ border-bottom:none; }
-tbody tr:nth-child(even){ background:rgba(255,255,255,.02); }
-tbody tr:hover{ background:rgba(109,139,255,.06); }
-.row-good{ background:rgba(52,211,153,.12) !important; }
-.row-bad{ background:rgba(251,113,133,.14) !important; }
-.kpis{ display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:16px; margin-top:12px; }
-.kpi{ background:linear-gradient(180deg,var(--surface2),var(--surface)); border:1px solid var(--border);
-  border-radius:var(--radius); padding:16px 18px; box-shadow:var(--shadow-sm); }
-.kpi .v{ font-family:var(--display); font-size:28px; font-weight:800; }
-.kpi .l{ color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.6px; margin-top:4px; }
-select,input,textarea{ background:var(--bg); color:var(--text); border:1px solid var(--border);
-  border-radius:12px; padding:9px 11px; font-size:13px; font-family:inherit; transition:.15s; }
-select:focus,input:focus,textarea:focus{ outline:none; border-color:var(--accent); box-shadow:var(--ring); }
-textarea{ width:100%; min-height:64px; resize:vertical; }
-.inline{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:8px 0; }
-label{ color:var(--muted); font-size:12px; margin-right:4px; }
-button,input[type=submit]{ background:linear-gradient(92deg,var(--accent),var(--accent2)); color:#06121f;
-  border:none; padding:10px 18px; border-radius:13px; cursor:pointer; font-size:13px; font-weight:800;
-  box-shadow:0 8px 22px rgba(52,211,153,.26); transition:.18s; }
-button:hover{ transform:translateY(-1px); filter:brightness(1.05); }
-.muted{ color:var(--muted); }
-.footer{ color:var(--muted); font-size:12.5px; margin-top:16px; line-height:1.6; }
-.card{ background:linear-gradient(180deg,var(--surface),var(--bg2)); border:1px solid var(--border);
-  border-radius:var(--radius); padding:16px 18px; margin-top:14px; box-shadow:var(--shadow-sm); }
-code{ background:rgba(255,255,255,.06); padding:1px 6px; border-radius:6px; font-size:12px; }
-body.light{ --bg:#f5f8fc; --bg2:#ffffff; --surface:#ffffff; --surface2:#eef2f8; --border:#dde4ef;
-  --text:#0f172a; --muted:#5b6b86; --shadow:0 12px 34px rgba(20,40,80,.10);
-  --shadow-sm:0 4px 16px rgba(20,40,80,.08); --ring:0 0 0 4px rgba(109,139,255,.20); }
-body.light .card,body.light table{ box-shadow:var(--shadow-sm); }
+_PAGE_CSS = WEB_STYLE + """
+/* ---- compact history / schedules pages ---- */
+.wrap{max-width:1180px;margin:0 auto;padding:26px 24px 56px}
+section{margin:32px 0}
+h2{display:flex;align-items:center;gap:9px;font-family:var(--m3-font);font-size:19px;font-weight:700;
+  color:var(--m3-on-surface);margin:0 0 14px;letter-spacing:-.2px}
+h2::before{content:"";width:4px;height:19px;border-radius:var(--m3-shape-full);
+  background:linear-gradient(180deg,var(--m3-primary),var(--m3-tertiary))}
+table{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px;background:var(--m3-surface-container-low);
+  border:1px solid var(--m3-outline-variant);border-radius:var(--m3-shape-m);overflow:hidden;
+  box-shadow:var(--m3-shadow-1)}
+th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--m3-outline-variant);vertical-align:top}
+th{color:var(--m3-on-surface-variant);text-transform:uppercase;font-size:10.5px;letter-spacing:.7px;
+  background:var(--m3-surface-container);font-weight:700}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:color-mix(in srgb,var(--m3-primary) 8%,transparent)}
+.row-good{background:color-mix(in srgb,var(--m3-tertiary) 14%,transparent) !important}
+.row-bad{background:color-mix(in srgb,var(--m3-error) 15%,transparent) !important}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin:16px 0 8px}
+.kpi{background:var(--m3-surface-container-low);border:1px solid var(--m3-outline-variant);
+  border-radius:var(--m3-shape-m);padding:18px 20px;box-shadow:var(--m3-shadow-1)}
+.kpi .v{font-family:var(--m3-font);font-size:28px;font-weight:800;color:var(--m3-on-surface)}
+.kpi .l{color:var(--m3-on-surface-variant);font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin-top:4px}
+select,input,textarea{background:var(--m3-surface-container-high);color:var(--m3-on-surface);
+  border:1px solid var(--m3-outline-variant);border-radius:var(--m3-shape-s);padding:10px 12px;font-size:13px;
+  font-family:var(--m3-font);transition:.15s}
+select:focus,input:focus,textarea:focus{outline:none;border-color:var(--m3-primary);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--m3-primary) 26%,transparent)}
+textarea{width:100%;min-height:76px;resize:vertical}
+.inline{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin:8px 0}
+.inline label{color:var(--m3-on-surface-variant);font-size:12px;margin:0 0 4px}
+button,input[type=submit]{background:var(--m3-primary);color:var(--m3-on-primary);border:none;padding:11px 20px;
+  border-radius:var(--m3-shape-s);cursor:pointer;font-size:13px;font-weight:800;font-family:var(--m3-font);
+  box-shadow:var(--m3-shadow-1);transition:.18s}
+button:hover,input[type=submit]:hover{filter:brightness(1.06);transform:translateY(-1px)}
+.muted{color:var(--m3-on-surface-variant)}
+.footer{color:var(--m3-on-surface-variant);font-size:12.5px;margin-top:14px;line-height:1.7}
+.card{background:var(--m3-surface-container-low);border:1px solid var(--m3-outline-variant);
+  border-radius:var(--m3-shape-m);padding:20px 22px;margin-top:14px;box-shadow:var(--m3-shadow-1)}
+code{background:var(--m3-surface-container-high);padding:1px 6px;border-radius:6px;font-size:12px}
+.topnav{display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap}
+.topnav a{background:var(--m3-surface-container-high);border:1px solid var(--m3-outline-variant);
+  color:var(--m3-on-surface);padding:9px 16px;border-radius:var(--m3-shape-xs);font-size:13px;
+  text-decoration:none;font-weight:700;transition:.16s}
+.topnav a:hover{border-color:var(--m3-primary);color:var(--m3-primary);transform:translateY(-1px);
+  box-shadow:var(--m3-shadow-1)}
 """
 
 
@@ -911,7 +861,7 @@ def render_schedules_page() -> str:
     <section><h2>New repeating audit</h2>
       <form method="post" action="/schedules" class="card">
         <div class="inline"><div><label>Name</label><br>
-          <input name="name" placeholder="Weekly cricket check" style="min-width:200px"></div>
+          <input name="name" placeholder="Weekly brand visibility check" style="min-width:200px"></div>
           <div><label>Target brand</label><br>
           <input name="target_brand" required style="min-width:200px"></div></div>
         <div><label>Industry topics (one per line or comma-separated)</label><br>
@@ -933,7 +883,7 @@ def render_schedules_page() -> str:
           <div><label>SearXNG base URL</label><br>
             <input name="searxng_base_url" placeholder="http://localhost:8080" style="min-width:200px"></div>
           <div><label>Local corpus dir</label><br>
-            <input name="corpus_dir" placeholder="./sample_corpus" style="min-width:180px"></div>
+            <input name="corpus_dir" placeholder="C:\docs\ground-truth" style="min-width:180px"></div>
         </div>
         <div class="inline">
           <label style="display:flex;gap:6px;align-items:center;color:#c7d0e6">
@@ -953,7 +903,7 @@ def create_app() -> Flask:
 
     @app.route("/")
     def index():
-        return INDEX_HTML
+        return INDEX_HTML.replace("__M3_STYLE__", WEB_STYLE)
 
     @app.route("/run", methods=["POST"])
     def run_audit():
@@ -1010,6 +960,97 @@ def create_app() -> Flask:
             "error": j["error"],
         }), mimetype="application/json")
 
+    @app.route("/api/probe", methods=["POST"])
+    def api_probe():
+        """Auto-detect brand / topics / competitors / locality from a URL or
+        brand name entered in field 1. Returns a pre-fill dict keyed by form
+        input names so the browser can populate every field.
+        """
+        data = request.get_json(silent=True) or {}
+        query = (data.get("query") or data.get("target_brand") or "").strip()
+        if not query:
+            return Response(json.dumps({"error": "Enter a brand or URL first."}),
+                            status=400, mimetype="application/json")
+        try:
+            from .analysis.auto_probe import probe
+
+            result = probe(query)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("probe failed")
+            return Response(json.dumps({"error": str(exc)}),
+                            status=500, mimetype="application/json")
+        if not result:
+            return Response(json.dumps({"error": "Could not detect anything."}),
+                            status=422, mimetype="application/json")
+        return Response(json.dumps(result), mimetype="application/json")
+
+    @app.route("/api/verify/<job>")
+    def api_verify(job: str):
+        """Return the full real-time verification breakdown for a finished audit.
+
+        Exposes every sub-score (models, harvest, support, provenance, live),
+        freshness grade, poisoning signals, and model identity so an operator
+        can audit trust in the results programmatically (no black box).
+        """
+        data = _load_job_data(job)
+        if data is None:
+            return Response(json.dumps({"error": "job not found or not finished"}),
+                            mimetype="application/json", status=404)
+        meta = data.get("meta", {}) or {}
+        di = meta.get("data_integrity", {}) or {}
+        fs = di.get("freshness_summary", {}) or {}
+        adv = data.get("advanced", {}) or {}
+        pois = (adv.get("poisoning") or {})
+        response = {
+            "job_id": job,
+            "verification_score": di.get("verification_score"),
+            "verified": di.get("verified"),
+            "sub_scores": {
+                "models_real": di.get("models_real_score"),
+                "harvest_ok": di.get("harvest_ok_score"),
+                "support": di.get("support_score"),
+                "provenance": di.get("provenance_score"),
+                "live": di.get("live_score"),
+            },
+            "models": {
+                "embedding_kind": di.get("embedding_kind"),
+                "embedding_model": di.get("embedding_model"),
+                "ner_kind": di.get("ner_kind"),
+                "ner_model": di.get("ner_model"),
+                "sentiment_model": di.get("sentiment_model"),
+                "models_real": di.get("models_real"),
+            },
+            "harvest": {
+                "harvest_ok": di.get("harvest_ok"),
+                "harvested_docs": di.get("harvested_docs"),
+                "dedup_removed": di.get("dedup_removed"),
+                "entities_with_mentions": di.get("entities_with_mentions"),
+                "entities_total": di.get("entities_total"),
+                "support_fraction": di.get("support_fraction"),
+                "provenance_complete": di.get("provenance_complete"),
+            },
+            "freshness": {
+                "grade": fs.get("freshness_grade"),
+                "composite": fs.get("freshness_composite"),
+                "live_pct": fs.get("live_pct"),
+                "fresh_pct": fs.get("fresh_pct"),
+                "stale_pct": fs.get("stale_pct"),
+                "median_age_days": fs.get("median_age_days"),
+                "p90_age_days": fs.get("p90_age_days"),
+                "p95_age_days": fs.get("p95_age_days"),
+                "validated_at": fs.get("validated_at"),
+            },
+            "poisoning": {
+                "brand_status": pois.get("brand_poisoning_status"),
+                "brand_machine_score": pois.get("brand_machine_score"),
+                "brand_repetition_score": pois.get("brand_repetition_score"),
+                "brand_generated_phrase_hits": pois.get("brand_generated_phrase_hits"),
+                "toxic_source_count": pois.get("toxic_source_count"),
+                "total_sources": pois.get("total_sources"),
+            },
+        }
+        return Response(json.dumps(response, indent=2), mimetype="application/json")
+
     @app.route("/files/<job>/<path:filename>")
     def files(job: str, filename: str):
         job_dir = os.path.join(WEB_OUTPUT, "jobs", job)
@@ -1030,7 +1071,39 @@ def create_app() -> Flask:
         data = _load_job_data(job)
         if data is None:
             return Response("<p class='muted'>Job not found.</p>", mimetype="text/html")
-        return Response(_narrative.features_html(data), mimetype="text/html")
+        return Response(_narrative.features_html(data, job), mimetype="text/html")
+
+    @app.route("/page/analysis/<job>")
+    def page_analysis(job: str):
+        """Full single-page Step-2 analysis: methodology + all 10 engines,
+        rendered together with no further clicks."""
+        data = _load_job_data(job)
+        if data is None:
+            return Response("<p class='muted'>Job not found.</p>", mimetype="text/html")
+        body = _deep.render_all(job, data)
+        return Response(body, mimetype="text/html")
+
+    @app.route("/page/deep/<job>/<feature>")
+    def page_deep(job: str, feature: str):
+        data = _load_job_data(job)
+        if data is None:
+            return Response("<p class='muted'>Job not found.</p>", mimetype="text/html")
+        body = _deep.render_deep(job, feature, data)
+        return Response(
+            "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            f"<title>Deep Analysis — RAG-EVDA</title><style>{_PAGE_CSS}</style>"
+            "</head><body><div class='wrap'>"
+            "<nav class='topnav'><a href='/'>🏠 Audit</a>"
+            "<a href='/history'>📈 History &amp; Trends</a>"
+            "<a href='/schedules'>⏱ Schedules</a></nav>"
+            + body +
+            "<div style='margin-top:24px;text-align:center'>"
+            f"<a href='/page/features/{job}' style='color:var(--m3-primary);font-weight:700'>← Back to Features Summary</a>"
+            "</div>"
+            "</div></body></html>",
+            mimetype="text/html",
+        )
 
     @app.route("/page/outputs/<job>")
     def page_outputs(job: str):
@@ -1061,7 +1134,7 @@ def create_app() -> Flask:
                 interval = 360
             unit = form.get("interval_unit") or "min"
             interval *= {"min": 1, "hour": 60, "day": 1440}.get(unit, 1)
-            sid = datetime.utcnow().strftime("%Y%m%d%H%M%S") + uuid.uuid4().hex[:4]
+            sid = datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S") + uuid.uuid4().hex[:4]
             sched = Schedule(
                 id=sid,
                 name=form.get("name") or form.get("target_brand") or "schedule",
@@ -1074,6 +1147,11 @@ def create_app() -> Flask:
                 harvester=form.get("harvester") or "duckduckgo",
                 prefer_searxng=form.get("prefer_searxng") is not None,
                 searxng_base_url=form.get("searxng_base_url") or None,
+                search_intent=form.get("search_intent") or "informational",
+                chunk_tokens=int(form.get("chunk_tokens") or 512),
+                chunk_overlap_tokens=int(form.get("chunk_overlap_tokens") or 64),
+                engine_matrix=[e.strip() for e in (form.get("engine_matrix") or
+                    "Google AI Overviews, SearchGPT, Gemini, Perplexity, Bing Copilot").split(",") if e.strip()],
                 corpus_dir=form.get("corpus_dir") or None,
                 embedding_model="sentence-transformers/all-MiniLM-L6-v2",
                 spacy_model="en_core_web_sm",

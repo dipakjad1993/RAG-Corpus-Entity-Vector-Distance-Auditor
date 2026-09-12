@@ -38,9 +38,12 @@ def generate_rag_brief(report: Dict) -> str:
                or []) or []
     gaps = report.get("proximity", {}).get("gaps", []) or []
     inv = report.get("invisibility", {}).get("per_topic", []) or []
+    prox_rows = report.get("proximity", {}).get("rows", []) or []
+    syn = report.get("advanced", {}).get("synthetic_queries", {}).get("per_entity", {}) or {}
     gap_by_topic = {g["topic"]: g for g in gaps}
     inv_by_topic = {t["topic"]: t for t in inv}
     density_by_topic = {d["topic"]: d for d in density}
+    prox_by_entity_topic = {(r["entity"], r["topic"]): r for r in prox_rows}
 
     brief = [
         f"# RAG Content Brief — {brand}",
@@ -51,28 +54,71 @@ def generate_rag_brief(report: Dict) -> str:
         "the local vector/embedding analysis. Each entry states what to publish ",
         "to close the semantic vector gap and displace a competitor's top-k chunk.",
         "",
+        "## Priority summary",
+        "",
     ]
-    for d in density:
+    # Overall priority map (severity -> recommended action) up front.
+    sev_order = {"critical": 0, "high": 1, "low": 2}
+    prioritized = sorted(density, key=lambda d: sev_order.get(d.get("severity", "low"), 3))
+    for i, d in enumerate(prioritized, 1):
+        topic = d.get("topic", "")
+        leader = d.get("leading_competitor") or "the leading competitor"
+        tokens = d.get("tokens_needed_to_displace", 0)
+        brief.append(
+            f"{i}. **[{d.get('severity', 'low').upper()}] {topic}** — "
+            f"~{max(tokens, 0)} tokens (top-{cfg.get('top_k_retrieval', 5)} "
+            f"retrieval) vs {leader}."
+        )
+
+    brief += ["", "---", ""]
+
+    for d in prioritized:
         topic = d.get("topic", "")
         g = gap_by_topic.get(topic, {})
         iv = inv_by_topic.get(topic, {})
         leader = d.get("leading_competitor") or "the leading competitor"
         tokens = d.get("tokens_needed_to_displace", 0)
+        # synthetic queries the team can target directly
+        entity_queries = syn.get(brand, [])
+        q_lines = "\n".join(
+            f"  - *{q.get('query', '')}* (confidence "
+            f"{q.get('retrieval_confidence', 0.0):.2f})"
+            for q in entity_queries if q.get("topic") == topic
+        ) or "  - (none targeted at this topic yet)"
+        brand_row = prox_by_entity_topic.get((brand, topic), {})
+        leader_row = prox_by_entity_topic.get((leader, topic), {})
         brief += [
             f"## {topic}",
-            f"- **Why this topic matters:** brand proximity is "
+            "",
+            f"**Severity:** {d.get('severity', 'low').upper()} — "
+            f"density gap ratio {d.get('density_gap_ratio', 'n/a')}.",
+            "",
+            f"**Why this topic matters:** brand proximity is "
             f"**{d.get('brand_proximity', 0.0):.2f}** vs "
             f"{leader} at **{d.get('leader_proximity', 0.0):.2f}** "
             f"(gap {g.get('gap', 0.0):.2f}, severity {g.get('severity', 'low')}).",
-            f"- **Retrieval gap:** invisibility {iv.get('topic_invisibility_pct', 0.0):.1f}% / "
+            f"- Brand within-window usage: {d.get('brand_on_window_usage_tokens', 0)} "
+            f"tokens; {leader} at {d.get('leader_on_window_usage_tokens', 0)} tokens.",
+            f"- Retrieval window token base this topic: "
+            f"{d.get('retrieval_window_token_base', 0):,} (real BPE windows).",
+            f"- Brand density {d.get('brand_density', 0.0):.1%} vs leader "
+            f"{d.get('leader_density', 0.0):.1%}.",
+            "",
+            f"**Retrieval gap:** invisibility {iv.get('topic_invisibility_pct', 0.0):.1f}% / "
             f"vector share-of-voice {iv.get('vector_share_of_voice_pct', 0.0):.1f}%.",
-            f"- **Token action:** write a section of ~{max(tokens, 60)} tokens "
+            "",
+            f"**Token action:** write a section of ~{max(tokens, 60)} tokens "
             f"on-topic that co-mentions **{brand}** with **{leader}** and the topic "
             f"terms so {brand} occupies the target on-window density "
             f"({d.get('target_entity_density', 0.015):.1%}).",
             f"- **Entity placement:** mention {brand} within the same retrieval "
             f"chunk (≤ {d.get('target_entity_density', 0.015):.1%} of the window) "
             f"as {leader} and '{topic}'.",
+            "",
+            f"**Target synthetic queries (reverse-engineered for {topic}):**",
+            q_lines,
+            "",
+            "---",
             "",
         ]
     if not density:
@@ -90,26 +136,31 @@ def write_rag_brief(path: str, report: Dict) -> str:
 
 
 def _jsonld_for_topic(topic: str, brand: str, competitors: List[str]) -> List[Dict]:
-    """A JSON-LD node graph fragment forcing entity resolution brand<->topic."""
+    """A JSON-LD node graph fragment forcing entity resolution brand<->topic.
+
+    Real-data version: links the brand to its topic AND to each competitor
+    (competitor comparison) with per-topic identifiers, instead of generic
+    boilerplate with empty sameAs.
+    """
     identifier = topic.strip().lower().replace(" ", "-")
+    brand_id = brand.strip().lower().replace(" ", "-")
+    mentions = [{"@type": "DefinedTerm", "name": topic}]
+    for c in (competitors or [])[:5]:
+        mentions.append({"@type": "Organization", "name": c})
     graph = [
         {
             "@context": "https://schema.org",
-            "@type": ["Product", "SoftwareApplication"],
+            "@type": ["Organization"],
+            "@id": f"https://example.org/#{brand_id}",
             "name": brand,
-            "identifier": identifier,
+            "identifier": f"{brand_id}-{identifier}",
             "about": {
                 "@type": "DefinedTerm",
                 "name": topic,
             },
-            "mentions": [
-                {"@type": "DefinedTerm", "name": topic},
-            ],
-            "sameAs": [],
-            "isRelatedTo": {
-                "@type": "DefinedTerm",
-                "name": topic,
-            },
+            "mentions": mentions,
+            "knowsAbout": [{"@type": "DefinedTerm", "name": topic}],
+            "isRelatedTo": [{"@type": "Organization", "name": c} for c in (competitors or [])[:5]],
         }
     ]
     return graph

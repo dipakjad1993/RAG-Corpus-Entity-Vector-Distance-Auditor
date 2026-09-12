@@ -90,7 +90,18 @@ def build_context(config, docs: List[Document], embedder: Embedder,
         return ctx
 
     logger.info("embedding %d chunks", len(all_chunks))
-    chunk_vecs = embedder.encode(all_chunks, show_progress=False)
+    # Encode in bounded batches and log real progress so the web UI's bar
+    # moves during this CPU-heavy phase (single-shot encode is silent and can
+    # look stuck for many minutes on a large corpus).
+    chunk_vecs: List[np.ndarray] = []
+    EMBED_BATCH = 64
+    total_chunks = len(all_chunks)
+    for start in range(0, total_chunks, EMBED_BATCH):
+        sl = all_chunks[start:start + EMBED_BATCH]
+        chunk_vecs.extend(embedder.encode(sl, show_progress=False))
+        done = min(start + len(sl), total_chunks)
+        if done % (EMBED_BATCH * 4) == 0 or done == total_chunks:
+            logger.info("embedded %d/%d chunks", done, total_chunks)
     # assign back
     by_owner: Dict[str, List[np.ndarray]] = defaultdict(list)
     for ch_vec, owner in zip(chunk_vecs, chunk_owner):

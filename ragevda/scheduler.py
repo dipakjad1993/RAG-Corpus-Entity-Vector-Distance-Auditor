@@ -16,7 +16,7 @@ import json
 import os
 import threading
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional
 
 from .utils import get_logger
@@ -46,10 +46,15 @@ class Schedule:
     spacy_model: str = "en_core_web_sm"
     auto_threshold: bool = True
     high_relevance_threshold: float = 0.70
+    search_intent: str = "informational"
+    chunk_tokens: int = 512
+    chunk_overlap_tokens: int = 64
+    engine_matrix: List[str] = field(default_factory=lambda: [
+        "Google AI Overviews", "SearchGPT", "Gemini", "Perplexity", "Bing Copilot"])
     last_run: Optional[str] = None
     last_job: Optional[str] = None
     created_at: str = field(
-        default_factory=lambda: datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     )
 
     def next_run(self) -> Optional[datetime]:
@@ -75,6 +80,16 @@ class Schedule:
             "spacy_model": self.spacy_model,
             "auto_threshold": self.auto_threshold,
             "high_relevance_threshold": self.high_relevance_threshold,
+            "search_intent": self.search_intent,
+            "chunk_tokens": self.chunk_tokens,
+            "chunk_overlap_tokens": self.chunk_overlap_tokens,
+            "engine_matrix": ",".join(self.engine_matrix),
+            "require_real_models": True,
+            "use_llm": True,
+            "dedupe_near": True,
+            "max_pages": 200,
+            "max_search_queries": 120,
+            "drift_history_keep": 60,
         }
 
 
@@ -150,14 +165,14 @@ class Scheduler:
         if not self._callback:
             return []
         fired: List[str] = []
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         with self._lock:
             due = [s for s in self._schedules.values()
                    if s.enabled and (s.next_run() or now) <= now]
         for s in due:
             try:
                 job = self._callback(s.profile())
-                s.last_run = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+                s.last_run = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 s.last_job = job
                 with self._lock:
                     self._save()

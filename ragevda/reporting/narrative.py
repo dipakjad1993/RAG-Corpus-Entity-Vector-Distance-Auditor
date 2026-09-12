@@ -25,8 +25,20 @@ def _esc(s: Any) -> str:
 
 
 def _pct(x: Any, nd: int = 1) -> str:
+    """Fraction 0..1 -> percent. Already-percent 0..100 values pass through."""
     try:
-        return f"{float(x) * 100:.{nd}f}%"
+        v = float(x)
+    except (TypeError, ValueError):
+        return "&mdash;"
+    if v > 1.5:  # already percent units
+        return f"{v:.{nd}f}%"
+    return f"{v * 100:.{nd}f}%"
+
+
+def _pct100(x: Any, nd: int = 1) -> str:
+    """Already-percent 0..100 value -> percent string (no scaling)."""
+    try:
+        return f"{float(x):.{nd}f}%"
     except (TypeError, ValueError):
         return "&mdash;"
 
@@ -50,10 +62,13 @@ def _round(x: Any, nd: int = 3) -> str:
 # ---------------------------------------------------------------------------
 
 def _chip(value: str, label: str) -> str:
-    return f'<span class="chip"><b>{value}</b>{_esc(label)}</span>'
+    return f'<span class="m3-chip"><b>{value}</b>{_esc(label)}</span>'
 
 
-def _feat(num: str, title: str, desc: str, metrics: str) -> str:
+def _feat(num: str, title: str, desc: str, metrics: str, link_url: str = "") -> str:
+    link = ""
+    if link_url:
+        link = f'<div style="margin-top:12px"><a href="{link_url}" style="color:var(--m3-primary);font-weight:700;font-size:13px">View Full Analysis →</a></div>'
     return f"""
     <div class="feat">
       <div class="feat-num">{num}</div>
@@ -61,6 +76,7 @@ def _feat(num: str, title: str, desc: str, metrics: str) -> str:
         <h3>{title}</h3>
         {desc}
         <div class="feat-metrics">{metrics}</div>
+        {link}
       </div>
     </div>"""
 
@@ -121,7 +137,7 @@ def _extract(data: Dict[str, Any]) -> Dict[str, Any]:
 # Page 2 — Four micro-engines, explained with this run's real metrics
 # ---------------------------------------------------------------------------
 
-def features_html(data: Dict[str, Any]) -> str:
+def features_html(data: Dict[str, Any], job_id: str = "") -> str:
     d = _extract(data)
     cfg, di, hs, cs = d["cfg"], d["di"], d["hs"], d["cs"]
 
@@ -216,11 +232,12 @@ def features_html(data: Dict[str, Any]) -> str:
         _chip(_num(d["omitted"]), " omissions"),
     ])
 
+    base = f"/page/deep/{job_id}/" if job_id else ""
     feats = "".join([
-        _feat("A", "Zero-Cost Headless Web Harvester", a_desc, a_metrics),
-        _feat("B", "Local Vector Embedding &amp; Semantic Mapping", b_desc, b_metrics),
-        _feat("C", "Local NER &amp; Knowledge Graphs", c_desc, c_metrics),
-        _feat("D", "Unlinked Authority &amp; Citation Gap Finder", d_desc, d_metrics),
+        _feat("A", "Zero-Cost Headless Web Harvester", a_desc, a_metrics, base + "web_harvester"),
+        _feat("B", "Local Vector Embedding &amp; Semantic Mapping", b_desc, b_metrics, base + "vector_embedding"),
+        _feat("C", "Local NER &amp; Knowledge Graphs", c_desc, c_metrics, base + "ner_graphs"),
+        _feat("D", "Unlinked Authority &amp; Citation Gap Finder", d_desc, d_metrics, base + "citation_gap"),
     ])
 
     # ---- Verification / methodology ------------------------------------
@@ -240,12 +257,20 @@ def features_html(data: Dict[str, Any]) -> str:
          if di.get("harvest_ok") else "Degraded"],
         ["Documents harvested", _num(di.get("harvested_docs"))],
         ["Near-duplicates removed", _num(di.get("dedup_removed"))],
-        ["Live sources", _pct(fs.get("live_pct"))],
-        ["Fresh / current", _pct(fs.get("fresh_pct"))],
+        ["Live sources", _pct100(fs.get("live_pct"))],
+        ["Fresh / current", _pct100(fs.get("fresh_pct"))],
         ["Median source age", f"{_round(fs.get('median_age_days'))} days"],
         ["Entities with mentions", f'{_num(di.get("entities_with_mentions"))} / {_num(di.get("entities_total"))}'],
         ["Provenance complete", "Yes" if di.get("provenance_complete") else "Partial"],
         ["Support fraction", _pct(di.get("support_fraction"))],
+        ["Sub-scores (models / harvest / support / provenance / live)",
+         " / ".join([
+             _round(di.get("models_real_score")),
+             _round(di.get("harvest_ok_score")),
+             _round(di.get("support_score")),
+             _round(di.get("provenance_score")),
+             _round(di.get("live_score")),
+         ])],
         ["Verification score", f'{_round(vscore)} / 100 &nbsp;({"VERIFIED" if verified else "PARTIAL"})'],
     ]
     verify_block = f"""
@@ -264,16 +289,16 @@ def features_html(data: Dict[str, Any]) -> str:
 
     return f"""
     <section class="narrative">
-      <h2>How the audit works &mdash; four local micro-engines</h2>
-      <p class="lead">This run analysed <b>{_num(cs.get('doc_count'))}</b> clean
+      <h2 class="m3-h2">How the audit works &mdash; four local micro-engines</h2>
+      <p class="m3-lead">This run analysed <b>{_num(cs.get('doc_count'))}</b> clean
       documents for <b>{_esc(brand)}</b> across
       <b>{_num(len(topics))}</b> topics and <b>{_num(len(comps))}</b> competitors.
       Each engine below shows what it did on <i>this</i> corpus.</p>
       <div class="feat-list">{feats}</div>
 
-      {_advanced_features_html(d)}
+      {_advanced_features_html(d, job_id)}
 
-      <h2>Methodology &amp; verification</h2>
+      <h2 class="m3-h2">Methodology &amp; verification</h2>
       {verify_block}
     </section>"""
 
@@ -282,10 +307,11 @@ def features_html(data: Dict[str, Any]) -> str:
 # Enterprise advanced-features block (page 2)
 # ---------------------------------------------------------------------------
 
-def _advanced_features_html(d: Dict[str, Any]) -> str:
+def _advanced_features_html(d: Dict[str, Any], job_id: str = "") -> str:
     adv = d.get("adv") or {}
     if not adv:
         return ""
+    base = f"/page/deep/{job_id}/" if job_id else ""
     feats = []
     # 5) Chunking & contextual-window simulator
     ch = adv.get("chunking", {}) or {}
@@ -303,7 +329,8 @@ def _advanced_features_html(d: Dict[str, Any]) -> str:
                 _chip(_num(ch.get("retrieved_count")), " top-k retrieved"),
                 _chip(_num(ch.get("tokens_processed")), " tokens processed"),
                 _chip(_num(ch.get("chunk_tokens")), " chunk size"),
-            ])))
+            ]),
+            base + "chunking"))
     # 6) Token density adjuster
     td = adv.get("token_density", {}) or {}
     if td.get("per_topic"):
@@ -318,7 +345,8 @@ def _advanced_features_html(d: Dict[str, Any]) -> str:
                 _chip(_round(target.get("tokens_needed_to_displace")), " tokens to displace"),
                 _chip(_esc(target.get("leading_competitor")), " leader"),
                 _chip(f"{td.get('brand_displacement_readiness', 0)}/100", " readiness"),
-            ])))
+            ]),
+            base + "token_density"))
     # 7) Sentiment auditor
     sent = adv.get("sentiment", {}) or {}
     brand_row = next((s for s in sent.get("per_entity", []) if s.get("entity") == d["cfg"].get("target_brand")), None)
@@ -334,7 +362,8 @@ def _advanced_features_html(d: Dict[str, Any]) -> str:
                 _chip(_round((brand_row or {}).get("net_sentiment")), " brand net sentiment"),
                 _chip(_num(risks), " entities with risk windows"),
                 _chip(_esc(sent.get("method", "")[:26]), " method"),
-            ])))
+            ]),
+            base + "sentiment"))
     # 8) Engine-matrix SoV heatmap
     eng = adv.get("engine_matrix", {}) or {}
     if eng.get("cells"):
@@ -361,21 +390,27 @@ def _advanced_features_html(d: Dict[str, Any]) -> str:
             "".join([
                 _chip(_num(len(list(syn.get("per_entity", {}).values())[0]) if syn.get("per_entity") else 0), " queries/entity"),
                 _chip(_num(len(syn.get("per_entity", {}))), " entities"),
-            ])))
+            ]),
+            base + "synthetic_queries"))
     # 10) Vector poisoning / negative SEO
     pois = adv.get("poisoning", {}) or {}
     if pois:
         status = pois.get("brand_poisoning_status", "clean")
+        generated = pois.get("generated_phrase_hits") or 0
         feats.append(_feat(
             "10", "Vector Poisoning / Negative-SEO Detection",
-            "<p>Detects how low-quality sites co-cite the brand with toxic or " 
+            "<p>Detects how low-quality sites co-cite the brand with toxic or "
             "off-topic concept clusters that drag its centroid toward junk topics "
             "in vector space &mdash; a growing risk as engines rank by semantic "
-            "association.</p>",
+            "association. Machine-generated content (spam templates, path stuffing, "
+            "thin pages) is flagged via repetition &amp; machine-scoring so "
+            "low-quality co-cited pages never masquerade as editorial authority.</p>",
             "".join([
                 _chip(_esc(status), " brand status"),
                 _chip(_num(pois.get("toxic_source_count")), " toxic sources"),
                 _chip(_num(pois.get("total_sources")), " sources audited"),
+                _chip(_round(pois.get("brand_machine_score")), " brand machine-score"),
+                _chip(_num(pois.get("brand_generated_phrase_hits")), " generated-phrase hits"),
             ])))
     # 11) Semantic drift tracking
     dr = adv.get("drift", {}) or {}
@@ -391,10 +426,11 @@ def _advanced_features_html(d: Dict[str, Any]) -> str:
             "".join([
                 _chip(_num(n_alerts), " drift alerts"),
                 _chip(_num(len(dr.get("per_topic", []))), " topics tracked"),
-            ])))
+            ]),
+            base + "drift_tracking"))
     if not feats:
         return ""
-    return ('<h2>Enterprise extensions &amp; advanced intelligence</h2>'
+    return ('<h2 class="m3-h2">Enterprise extensions &amp; advanced intelligence</h2>'
             '<div class="feat-list">' + "".join(feats) + "</div>")
 
 
@@ -429,7 +465,7 @@ def outputs_html(data: Dict[str, Any], job_id: str) -> str:
     rec_rows = ""
     for r in recs[:12]:
         rec_rows += (
-            f"<tr><td><span class='badge'>{_esc(r.get('priority'))}</span></td>"
+            f"<tr><td><span class='m3-badge'>{_esc(r.get('priority'))}</span></td>"
             f"<td>{_esc(r.get('title'))}</td>"
             f"<td>{_esc(r.get('category'))}</td>"
             f"<td>{_round(r.get('score'))}</td></tr>"
@@ -473,36 +509,36 @@ def outputs_html(data: Dict[str, Any], job_id: str) -> str:
 
     return f"""
     <section class="outputs">
-      <h2>What this audit produced</h2>
-      <div class="kpis">
-        <div class="kpi"><div class="v" style="color:var(--bad)">{_round(inv_idx)}</div>
+      <h2 class="m3-h2">What this audit produced</h2>
+      <div class="m3-grid">
+        <div class="m3-kpi"><div class="v" style="color:var(--m3-error)">{_round(inv_idx)}</div>
           <div class="l">RAG Invisibility Index</div></div>
-        <div class="kpi"><div class="v" style="color:var(--warn)">{_round(inv_composite)}%</div>
+        <div class="m3-kpi"><div class="v" style="color:#FBBF24">{_round(inv_composite)}%</div>
           <div class="l">Composite Invisibility</div></div>
-        <div class="kpi"><div class="v" style="color:var(--accent2)">{_round(sova)}%</div>
+        <div class="m3-kpi"><div class="v" style="color:var(--m3-tertiary)">{_round(sova)}%</div>
           <div class="l">Vector Share of Voice</div></div>
-        <div class="kpi"><div class="v">{_num(len(recs))}</div>
+        <div class="m3-kpi"><div class="v">{_num(len(recs))}</div>
           <div class="l">Off-page Recommendations</div></div>
       </div>
-      <p class="lead">The <b>RAG Invisibility Index</b> is the percentage of
+      <p class="m3-lead">The <b>RAG Invisibility Index</b> is the percentage of
       high-ranking industry articles where <b>{brand}</b> is completely absent
       while competitors are co-cited. Lower is better. Full interactive detail is
       in the dashboard; the curated tables and a print-ready PDF are below.</p>
 
-      <h2>Semantic vector proximity (sample)</h2>
-      <table><thead><tr><th>Topic</th><th>Entity</th><th>Proximity</th>
+      <h2 class="m3-h2">Semantic vector proximity (sample)</h2>
+      <table class="m3-table"><thead><tr><th>Topic</th><th>Entity</th><th>Proximity</th>
         <th>Label</th><th>High-rel docs</th></tr></thead>
         <tbody>{prox_rows}</tbody></table>
 
-      <h2>High-density off-page target list</h2>
-      <table><thead><tr><th>URL</th><th>Type</th><th>Top topic</th>
+      <h2 class="m3-h2">High-density off-page target list</h2>
+      <table class="m3-table"><thead><tr><th>URL</th><th>Type</th><th>Top topic</th>
         <th>Relevance</th><th>Competitors present</th></tr></thead>
         <tbody>{opt_rows}</tbody></table>
 
-      <h2>Actionable off-page recommendations</h2>
-      <table><thead><tr><th>Priority</th><th>Directive</th><th>Category</th>
+      <h2 class="m3-h2">Actionable off-page recommendations</h2>
+      <table class="m3-table"><thead><tr><th>Priority</th><th>Directive</th><th>Category</th>
         <th>Score</th></tr></thead><tbody>{rec_rows}</tbody></table>
 
-      <h2>Download the full deliverables</h2>
+      <h2 class="m3-h2">Download the full deliverables</h2>
       {downloads}
     </section>"""

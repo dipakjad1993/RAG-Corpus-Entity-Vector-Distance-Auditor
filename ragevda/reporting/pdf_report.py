@@ -20,16 +20,22 @@ from reportlab.platypus import (
     Spacer, Table, TableStyle,
 )
 
-# ---- palette -------------------------------------------------------------
-ACCENT = colors.HexColor("#6d8bff")
-ACCENT2 = colors.HexColor("#34d399")
-DARK = colors.HexColor("#0b0e14")
-INK = colors.HexColor("#0f172a")
-MUTED = colors.HexColor("#5b6b86")
-LINE = colors.HexColor("#dde4ef")
-ALT = colors.HexColor("#eef2f8")
-BAD = colors.HexColor("#fb7185")
-WARN = colors.HexColor("#fbbf24")
+# ---- palette (Material 3, print-tuned) ----------------------------------
+PRIMARY = colors.HexColor("#6750A4")
+ON_PRIMARY = colors.HexColor("#FFFFFF")
+PRIMARY_CONTAINER = colors.HexColor("#EADDFF")
+SECONDARY = colors.HexColor("#625B71")
+TERTIARY = colors.HexColor("#7D5260")
+DARK = colors.HexColor("#141218")
+INK = colors.HexColor("#1C1B1F")
+MUTED = colors.HexColor("#49454F")
+LINE = colors.HexColor("#CAC4D0")
+ALT = colors.HexColor("#F3EDF7")
+BAD = colors.HexColor("#BA1A1A")
+WARN = colors.HexColor("#9A6B00")
+GOOD = colors.HexColor("#377C44")
+
+PRIMARY_HEX = "#6750A4"
 
 
 def _e(s: Any) -> str:
@@ -44,8 +50,20 @@ def _e(s: Any) -> str:
 
 
 def _pct(x: Any, nd: int = 1) -> str:
+    """Fraction 0..1 -> percent. Already-percent 0..100 values pass through."""
     try:
-        return f"{float(x) * 100:.{nd}f}%"
+        v = float(x)
+    except (TypeError, ValueError):
+        return "—"
+    if v > 1.5:  # already a percent (e.g. 18.1 = 18.1%), do not *100 again
+        return f"{v:.{nd}f}%"
+    return f"{v * 100:.{nd}f}%"
+
+
+def _pct100(x: Any, nd: int = 1) -> str:
+    """Value already in 0..100 percent units -> percent string (no scaling)."""
+    try:
+        return f"{float(x):.{nd}f}%"
     except (TypeError, ValueError):
         return "—"
 
@@ -72,7 +90,7 @@ def _styles() -> Dict[str, ParagraphStyle]:
     out["subtitle"] = ParagraphStyle("st", fontName="Helvetica", fontSize=11,
                                      textColor=colors.white, leading=15)
     out["h2"] = ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=14,
-                               textColor=ACCENT, spaceBefore=16, spaceAfter=6, leading=17)
+                               textColor=PRIMARY, spaceBefore=16, spaceAfter=6, leading=17)
     out["h3"] = ParagraphStyle("h3", fontName="Helvetica-Bold", fontSize=11.5,
                                textColor=INK, spaceBefore=8, spaceAfter=3)
     out["body"] = ParagraphStyle("b", fontName="Helvetica", fontSize=9.5,
@@ -95,7 +113,7 @@ def _section_bar(text: str, styles: Dict[str, ParagraphStyle]) -> Table:
     p = Paragraph(text, styles["h2"])
     bar = Table([[p]], colWidths=[170 * mm])
     bar.setStyle(TableStyle([
-        ("LINEBEFORE", (0, 0), (0, 0), 3, ACCENT),
+        ("LINEBEFORE", (0, 0), (0, 0), 3, PRIMARY),
         ("LEFTPADDING", (0, 0), (0, 0), 8),
         ("TOPPADDING", (0, 0), (0, 0), 2),
         ("BOTTOMPADDING", (0, 0), (0, 0), 2),
@@ -124,7 +142,7 @@ def _grid_table(header: List[str], rows: List[List[Any]], styles: Dict[str, Para
         data.append([Paragraph(_e(c), styles["cell"]) for c in r])
     t = Table(data, colWidths=[w * mm for w in widths], repeatRows=1)
     t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), ACCENT),
+        ("BACKGROUND", (0, 0), (-1, 0), PRIMARY),
         ("GRID", (0, 0), (-1, -1), 0.4, LINE),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ALT]),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -179,7 +197,14 @@ def render_report_pdf(data: Dict[str, Any], job_id: str, out_path: str) -> str:
 
     # ---- cover band ------------------------------------------------------
     verified = bool(di.get("verified"))
-    badge = "VERIFIED" if verified else "PARTIAL"
+    score = float(di.get("verification_score") or 0.0)
+    models_real = bool(di.get("models_real"))
+    if verified:
+        badge = "VERIFIED"
+    elif models_real and score >= 50:
+        badge = "PARTIAL"
+    else:
+        badge = "UNVERIFIED"
     cover = Table([[
         Paragraph("RAG Corpus Entity &amp; Vector Distance Auditor",
                   styles["title"]),
@@ -198,7 +223,7 @@ def render_report_pdf(data: Dict[str, Any], job_id: str, out_path: str) -> str:
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ("LEFTPADDING", (0, 0), (-1, -1), 12),
         ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-        ("LINEBELOW", (0, 0), (-1, -1), 3, ACCENT2),
+        ("LINEBELOW", (0, 0), (-1, -1), 3, TERTIARY),
     ]))
     el.append(cover)
     el.append(Spacer(1, 10))
@@ -215,8 +240,8 @@ def render_report_pdf(data: Dict[str, Any], job_id: str, out_path: str) -> str:
         f"<b>{_e(meta.get('embedding_kind', ''))}</b> embedding engine and "
         f"<b>{_e(meta.get('ner_kind', ''))}</b> NER. The brand's "
         f"<b>RAG Invisibility Index</b> is <b>{_r(inv_idx)}</b> "
-        f"({_pct(inv.get('composite_invisibility_index_pct'))} composite) and its "
-        f"vector share of voice is <b>{_pct(inv.get('composite_vector_share_of_voice_pct'))}</b>. "
+        f"({_pct100(inv.get('composite_invisibility_index_pct'))} composite) and its "
+        f"vector share of voice is <b>{_pct100(inv.get('composite_vector_share_of_voice_pct'))}</b>. "
         f"The report surfaces <b>{_num(len(recs))}</b> prioritized off-page "
         f"recommendations and <b>{_num(len(prov))}</b> sourced documents. "
         f"Data-integrity verification scored <b>{_r(di.get('verification_score'))}/100</b> "
@@ -301,7 +326,7 @@ def render_report_pdf(data: Dict[str, Any], job_id: str, out_path: str) -> str:
         el.append(Paragraph(title, styles["h3"]))
         el.append(Paragraph(desc, styles["body"]))
         chip_row = " &nbsp;•&nbsp; ".join(_e(c) for c in chips)
-        el.append(Paragraph(f'<font color="#6d8bff"><b>{chip_row}</b></font>', styles["small"]))
+        el.append(Paragraph(f'<font color="{PRIMARY_HEX}"><b>{chip_row}</b></font>', styles["small"]))
         el.append(Spacer(1, 4))
 
     # ---- results ---------------------------------------------------------
@@ -322,7 +347,7 @@ def render_report_pdf(data: Dict[str, Any], job_id: str, out_path: str) -> str:
     el.append(Paragraph("5.2 Entity Citation Summary", styles["h3"]))
     cite_rows = [[e.get("entity"), _num(e.get("docs_total")), _num(e.get("docs_mentioned")),
                   _num(e.get("docs_linked")), _num(e.get("docs_unlinked")),
-                  _num(e.get("docs_omitted")), _pct(e.get("mention_rate_pct"))]
+                  _num(e.get("docs_omitted")), _pct100(e.get("mention_rate_pct"))]
                  for e in ent_sum[:15]]
     el.append(_grid_table(
         ["Entity", "Docs", "Mentioned", "Linked", "Unlinked", "Omitted", "Mention %"],

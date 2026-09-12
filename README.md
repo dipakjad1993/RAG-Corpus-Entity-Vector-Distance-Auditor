@@ -69,8 +69,9 @@ guidelines, and the project's About + tags.**
 17. [Troubleshooting](#troubleshooting)
 18. [Responsible use](#responsible-use)
 19. [About](#about)
-20. [Tags](#tags)
-21. [License](#license)
+20. [Changelog](#changelog)
+21. [Tags](#tags)
+22. [License](#license)
 
 ---
 
@@ -178,6 +179,10 @@ publication) to close the gap.
 - **Python 3.10+**
 - A local **Hugging Face** model cache for embeddings (see below)
 - The **spaCy** `en_core_web_sm` model (`python -m spacy download en_core_web_sm`)
+- Web UI + PDF export are included: `flask`, `transformers`/`huggingface_hub`/`tokenizers`,
+  `reportlab` (all in `requirements.txt`, installed automatically)
+- Optional: `pypdf` (in `requirements.txt`) — enables **PDF ground-truth ingestion**
+  in `file` harvester mode alongside HTML/Markdown/TXT/XML
 - Optional: a self-hosted **SearXNG** instance (for higher-volume live search)
 - Optional: **Ollama** (for the local-LLM gap-analysis module)
 
@@ -195,12 +200,13 @@ pip install -r requirements.txt
 # 3. download the default spaCy NER model
 python -m spacy download en_core_web_sm
 
-# 4. (optional but recommended) pre-cache the default embedding model so the
-#    tool never needs the network at audit time
+# 4. (optional but recommended) pre-cache the default embedding + sentiment
+#    models so the tool never needs the network at audit time
 python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+python -c "from transformers import AutoTokenizer, AutoModelForSequenceClassification; AutoTokenizer.from_pretrained('cardiffnlp/twitter-roberta-base-sentiment-latest'); AutoModelForSequenceClassification.from_pretrained('cardiffnlp/twitter-roberta-base-sentiment-latest')"
 
 # 5. verify
-python -m ragevda.cli --version
+python -m ragevda.cli --version   # → ragevda 1.2.0
 ```
 
 > **Resilience guarantee.** If you request an embedding or NER model that is not
@@ -217,24 +223,24 @@ python -m ragevda.cli --version
 ### CLI
 
 ```bash
-# generate a starter config
+# generate a starter config (interactive prompts for real inputs)
 python -m ragevda.cli init -o config.yaml
 
 # run a full audit from a config file
 python -m ragevda.cli run -c config.yaml
 
-# quick run without a config file
+# quick run without a config file (use YOUR real brand details)
 python -m ragevda.cli quick \
-    --brand "Acme Software" \
-    --topics "enterprise churn prediction" "SaaS pipeline analytics" \
-    --competitors Salesforce HubSpot \
+    --brand "YourBrand" \
+    --topics "your industry topic" "another topic" \
+    --competitors CompetitorA CompetitorB \
     --depth 30
 
 # interactive five-input wizard
 python -m ragevda.cli interactive
 
 # show run-history / drift trends for a brand
-python -m ragevda.cli history --brand "Acme Software" --jobs-dir web_output/jobs
+python -m ragevda.cli history --brand "YourBrand" --jobs-dir web_output/jobs
 ```
 
 ### Web UI
@@ -251,7 +257,7 @@ The web UI exposes **11 configuration inputs** on one form:
 3. `competitor_entities` — direct competitors
 4. `crawl_depth` — results per query
 5. `locality` — geo target
-6. `search_intent` — informational / transactional / comparison / research / local
+6. `search_intent` — informational / transactional / comparison / research / local / commercial / navigational
 7. `entity_weighting` — per-entity importance
 8. `corpus_files` — owned ground-truth corpus
 9. `embedding_model` — sentence-transformers checkpoint
@@ -268,9 +274,9 @@ from ragevda.config import RunConfig
 from ragevda.orchestrator import run
 
 cfg = RunConfig(
-    target_brand="Acme Software",
-    industry_topics=["enterprise churn prediction", "CRM automation"],
-    competitor_entities=["Salesforce", "HubSpot"],
+    target_brand="YourBrand",
+    industry_topics=["your main industry topic", "secondary topic"],
+    competitor_entities=["CompetitorA", "CompetitorB"],
     crawl_depth=50,
     harvester="duckduckgo",
     require_real_models=True,          # never emit fake/degraded numbers
@@ -312,7 +318,7 @@ report = run(cfg)
 | `entity_domains` | `Dict[str, List[str]]` | Owned domains per entity — a doc on that domain counts as a genuine mention. |
 | `entity_weighting` | `Dict[str, float]` | Relative importance (e.g. brand at 1.5× a competitor). |
 | `ontology_aliases` | `Dict[str, List[str]]` | Sub-brands / product modules / patents owned by an entity; merged into alias mention map. |
-| `search_intent` | `str` | Retrieval surface to optimize: `informational` / `transactional` / `comparison` / `research` / `local`. |
+| `search_intent` | `str` | Retrieval surface to optimize: `informational` / `transactional` / `comparison` / `research` / `local` / `commercial` / `navigational`. |
 | `query_templates` | `Dict[str, str]` | Custom templates per intent; `{topic}` / `{brand}` substituted. |
 | `content_feeds` | `List[str]` | Competitor/industry RSS + sitemap URLs for real-time ingestion. |
 | `serp_footprints` | `List[str]` | Concrete source URLs per AI-engine surface; may be `engine|label|url`. |
@@ -578,7 +584,7 @@ Every audit writes a self-contained folder (e.g. `ragevda_output/` or
 ```jsonc
 {
   "meta": {
-    "tool": "RAG-EVDA", "version": "1.0.0", "generated_at": "...Z",
+    "tool": "RAG-EVDA", "version": "1.2.0", "generated_at": "...Z",
     "config": { /* every RunConfig field */ },
     "embedding_kind": "sentence-transformers",
     "embedding_model": "BAAI/bge-small-en-v1.5",
@@ -803,20 +809,18 @@ leaves your machine.
 
 ```yaml
 # ================= RAG-EVDA inputs =================
-# 1) TARGET BRAND
-target_brand: "Acme Software"
+# 1) TARGET BRAND (use your real brand/company name)
+target_brand: "YourBrand"
 
-# 2) TARGET INDUSTRY TOPICS / CONCEPTS (no limit)
+# 2) TARGET INDUSTRY TOPICS / CONCEPTS (no limit, use real topics)
 industry_topics:
-  - "enterprise churn prediction"
-  - "SaaS pipeline analytics"
-  - "CRM automation"
+  - "your main industry topic"
+  - "secondary topic"
 
-# 3) COMPETITOR ENTITIES (no limit)
+# 3) COMPETITOR ENTITIES (no limit, use real competitor names)
 competitor_entities:
-  - "Salesforce"
-  - "HubSpot"
-  - "Zendesk"
+  - "CompetitorA"
+  - "CompetitorB"
 
 # 4) CRAWL DEPTH (1-200)
 crawl_depth: 50
@@ -836,7 +840,7 @@ output_dir: "./ragevda_output"
 require_real_models: true          # never emit fake/degraded numbers
 
 # ----- enterprise / advanced -----
-search_intent: "informational"     # informational|transactional|comparison|research|local
+search_intent: "informational"     # informational|transactional|comparison|research|local|commercial|navigational
 chunk_tokens: 512
 chunk_overlap_tokens: 64
 target_entity_density: 0.015
@@ -901,13 +905,33 @@ self-contained, so it can be embedded or served by any static host.
 
 ## About
 
-**RAG-EVDA — RAG Corpus Entity & Vector Distance Auditor** is a zero-cost,
+**RAG-EVDA — RAG Corpus Entity & Vector Distance Auditor (v1.2.0)** is a zero-cost,
 fully-local intelligence engine for AI-search visibility. It decodes how modern
 generative search engines (Gemini, SearchGPT, Google AI Overviews, Perplexity,
 Bing Copilot) semantically perceive your brand relative to competitors inside a
 retrieval-augmented generation corpus — turning "AI SEO guessing" into exact,
 actionable vector mathematics. No proprietary API keys. No data leaves your
-machine. Every number is real, verifiable, and enterprise-grade.
+machine. Every number is real, verifiable, and enterprise-grade — the v1.2.0
+hardening release removed every synthetic fallback and demo fixture so reports
+are built exclusively on live fetches and local ML inference.
+
+---
+
+## Changelog
+
+### v1.2.0 — Real-data hardening release
+- **Removed all synthetic/demo paths:** TF-IDF/lexicon/char-4 fallbacks now hard-fail
+  under `require_real_models=True` (default) instead of silently degrading; fabricated
+  deep-analysis provenance rows deleted (real `report.json` provenance only);
+  `SmokeBrand`/`Acme` demo jobs and empty failed runs purged.
+- **Correctness fixes:** case-insensitive co-occurrence graph (bind strength was always 0);
+  real per-mention BPE token spans (was chars/4 estimate); PDF/narrative percent
+  scaling (was 1810%/10000%); 3-state `VERIFIED/PARTIAL/UNVERIFIED` badge everywhere;
+  verbatim sentiment `snippet` rendering; word-boundary anchor matching.
+- **Coverage:** PDF ground-truth ingestion (`pypdf`), `commercial`/`navigational` intents,
+  real-data JSON-LD (competitor-aware), file-corpus honesty (`live=False`, hash+mtime
+  provenance), offline-first sentiment/tokenizer loading, scheduler↔web-run parity,
+  pinned `flask`/`transformers`/`huggingface_hub`/`reportlab`/`pypdf` dependencies.
 
 ---
 
@@ -917,7 +941,10 @@ machine. Every number is real, verifiable, and enterprise-grade.
 `sentence-transformers` · `rag-seo` · `retrieval-augmented-generation` ·
 `share-of-voice` · `semantic-search` · `duckdb` · `spacy` · `local-llm` ·
 `drift-detection` · `sentiment-analysis` · `competitive-intelligence` ·
-`brand-audit` · `vector-database` · `ai-visibility`
+`brand-audit` · `vector-database` · `ai-visibility` · `perplexity` ·
+`gemini` · `searchgpt` · `google-ai-overviews` · `bing-copilot` ·
+`tokenization` · `knowledge-graph` · `negative-seo` · `content-brief` ·
+`json-ld` · `offline-first`
 
 ---
 

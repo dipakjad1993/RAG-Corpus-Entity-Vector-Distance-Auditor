@@ -1,60 +1,75 @@
-target_brand: "Acme Software"
-industry_topics:           # any number of topics — no limit
-  - "enterprise churn prediction"
-  - "SaaS pipeline analytics"
-  - "CRM automation"
-competitor_entities:       # any number of competitors — no limit
-  - "Salesforce"
-  - "HubSpot"
-  - "Zendesk"
-crawl_depth: 50
-max_search_queries: 120    # bounds live search calls (topics/comps themselves are unlimited)
-locality: null
-harvester: "duckduckgo"          # duckduckgo | searxng | file
-searxng_base_url: null
-corpus_dir: null
+# RAG-EVDA Configuration Template
+# ================================
+# Fill in YOUR real brand details below. Every field requires genuine data
+# for accurate vector-proximity and RAG-visibility analysis.
+# Do NOT use placeholder names like "Acme", "Widget", "CompA", etc.
+
+# ---- REQUIRED: Your brand ----
+target_brand: "YourBrand"          # Your actual company/brand name
+
+# ---- REQUIRED: Topics your brand competes for in AI search ----
+industry_topics:
+  - "your main industry topic"     # e.g. "predictive analytics software"
+  - "secondary topic"              # e.g. "customer churn prediction"
+  - "tertiary topic"               # e.g. "SaaS pipeline analytics"
+
+# ---- REQUIRED: Your direct competitors ----
+competitor_entities:
+  - "CompetitorA"                  # Your top direct competitor
+  - "CompetitorB"                  # Your second competitor
+
+# ---- Harvesting settings ----
+crawl_depth: 50                    # Pages per search query (1-200)
+max_search_queries: 120            # Bounds live search calls
+locality: null                     # e.g. "US", "UK", null for global
+harvester: "duckduckgo"            # duckduckgo | searxng | file
+searxng_base_url: null             # Required if harvester=searxng
+corpus_dir: null                   # Local folder for file-mode harvester
 include_reddit: true
 include_news: true
+
+# ---- NLP / embedding models (local, zero-cost) ----
 embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
 spacy_model: "en_core_web_sm"
+
+# ---- Output ----
 output_dir: "./ragevda_output"
 
 # ---- Enterprise / AI-engine inputs (all optional, sensible defaults) ----
-# Search-intent has templates that shape query generation.
-search_intent: "informational"   # informational | commercial | navigational | transactional | comparison | local
-query_templates: null            # override the intent template set (list of {pattern, intent})
-# Ontology aliases / sub-brands extend NER + query expansion (dict of brand -> [aliases]).
-ontology_aliases:
-  "Acme Software": ["Acme CRM", "Acme Pro"]
-# Custom entity weighting (dict of entity -> relative weight, default 1.0).
-entity_weighting:
-  "Acme Software": 1.5
-# Historical ground-truth corpora: internal brand / whitepaper files
-# (PDF/MD/TXT) compared against the Web RAG vector. Also a folder via corpus_dir.
-corpus_files: []                 # e.g. ["./docs/acme-whitepaper.pdf"]
-# Content feeds (RSS / sitemap URLs) pulled in as real-time corpus documents.
-content_feeds: []                # e.g. ["https://example.com/feed.xml"]
-# Search-engine scraping footprints: concrete source URLs per AI-engine surface,
-# format "engine|label|url" (engine/label optional).
-serp_footprints: []              # e.g. ["Perplexity|guide|https://x.com/g"]
-# RAG chunking / contextual-window simulation settings.
+search_intent: "informational"     # informational | transactional | comparison | research | local
+query_templates: null              # Override intent template set
+# Ontology aliases / sub-brands extend NER + query expansion
+ontology_aliases: {}
+  # "YourBrand": ["YourBrand Pro", "YourBrand Enterprise"]
+# Custom entity weighting (relative importance, default 1.0)
+entity_weighting: {}
+  # "YourBrand": 1.5
+# Historical ground-truth corpora (PDF/MD/TXT) compared against web RAG vectors
+corpus_files: []
+  # - "./docs/your-whitepaper.pdf"
+# Content feeds (RSS / sitemap URLs) for real-time corpus documents
+content_feeds: []
+  # - "https://yourcompany.com/blog/feed.xml"
+# Search-engine scraping footprints: "engine|label|url"
+serp_footprints: []
+# RAG chunking / contextual-window simulation
 chunk_tokens: 512
 chunk_overlap_tokens: 64
-# Token-density adjuster target + retrieval depth.
+# Token-density target + retrieval depth
 target_entity_density: 0.015
 top_k_retrieval: 5
-# AI-engine matrix modelled for the SoV heatmap.
+# AI-engine matrix for SoV heatmap
 engine_matrix:
   - "Google AI Overviews"
   - "SearchGPT"
   - "Gemini"
   - "Perplexity"
   - "Bing Copilot"
-# Semantic drift history retention (runs).
+# Semantic drift history retention (runs)
 drift_history_keep: 60
-# Synthetic query generator.
+# Synthetic query generator
 synthetic_query_count: 12
-# Optional local Ollama LLM for gap-analysis rationales (graceful if unreachable).
+# Optional local Ollama LLM for gap-analysis rationales
 use_llm: true
-ollama_base_url: null             # e.g. http://localhost:11434
+ollama_base_url: null
 ollama_model: "llama3"

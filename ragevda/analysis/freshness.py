@@ -140,6 +140,11 @@ def validate_freshness(docs) -> Dict:
                 age_days = None
 
         is_live = bool(d.http_status) and 200 <= d.http_status < 300
+        # Local-file corpus docs (file://) are real ground truth but were never
+        # fetched over HTTP — never claim HTTP liveness for them.
+        is_local_file = str(getattr(d, "url", "")).startswith("file://") or getattr(d, "source_type", "") == "file"
+        if is_local_file:
+            is_live = False
         schema_detected = bool(
             d.raw_html and any(
                 k in (d.raw_html or "").lower()
@@ -168,20 +173,47 @@ def validate_freshness(docs) -> Dict:
     recent = sum(1 for s in per_source if s["staleness"] == "recent")
     stale = sum(1 for s in per_source if s["staleness"] in ("stale", "aging"))
     unknown = sum(1 for s in per_source if s["staleness"] == "unknown")
-    ages = [s["age_days"] for s in per_source if s["age_days"] is not None]
+    ages = sorted(s["age_days"] for s in per_source if s["age_days"] is not None)
+
+    def _quantile(sorted_ages: List[float], p: float):
+        if not sorted_ages:
+            return None
+        k = (len(sorted_ages) - 1) * p
+        f = int(k)
+        c = min(f + 1, len(sorted_ages) - 1)
+        return round(sorted_ages[f] + (sorted_ages[c] - sorted_ages[f]) * (k - f), 1)
+
+    n = len(per_source)
+    # Composite freshness grade (A-F): 60% live, 30% fresh(+recent), 10% age-known.
+    live_frac = (live / n) if n else 0.0
+    cur_frac = ((fresh + recent) / n) if n else 0.0
+    known_frac = ((n - unknown) / n) if n else 0.0
+    composite = 100.0 * (0.6 * live_frac + 0.3 * cur_frac + 0.1 * known_frac)
+    grade = (("A" if composite >= 90 else
+              "B" if composite >= 80 else
+              "C" if composite >= 70 else
+              "D" if composite >= 60 else
+              "F"))
 
     summary = {
-        "total_sources": len(per_source),
-        "live_pct": round(live / len(per_source) * 100.0, 1) if per_source else 0.0,
-        "fresh_pct": round(fresh / len(per_source) * 100.0, 1) if per_source else 0.0,
-        "recent_pct": round(recent / len(per_source) * 100.0, 1) if per_source else 0.0,
-        "stale_pct": round(stale / len(per_source) * 100.0, 1) if per_source else 0.0,
-        "unknown_age_pct": round(unknown / len(per_source) * 100.0, 1) if per_source else 0.0,
+        "total_sources": n,
+        "live_pct": round(live / n * 100.0, 1) if n else 0.0,
+        "fresh_pct": round(fresh / n * 100.0, 1) if n else 0.0,
+        "recent_pct": round(recent / n * 100.0, 1) if n else 0.0,
+        "stale_pct": round(stale / n * 100.0, 1) if n else 0.0,
+        "unknown_age_pct": round(unknown / n * 100.0, 1) if n else 0.0,
         "median_age_days": round(sorted(ages)[len(ages) // 2], 1) if ages else None,
-        "max_age_days": round(max(ages), 1) if ages else None,
+        "p90_age_days": _quantile(ages, 0.9),
+        "p95_age_days": _quantile(ages, 0.95),
+        "max_age_days": max(ages) if ages else None,
+        "mean_age_days": round(sum(ages) / len(ages), 1) if ages else None,
+        "freshness_composite": round(composite, 1),
+        "freshness_grade": grade,
+        "validated_at": now.isoformat(),
         "method": ("age estimated from real Last-Modified/Date headers or "
-                   "schema.org/meta dates in the fetched HTML; all fields "
-                   "read verbatim from the live response."),
+                   "schema.org/meta dates in the fetched HTML; liveness from "
+                   "the live HTTP status; all fields read verbatim from the "
+                   "live response. Grade = 0.6*Live + 0.3*Current + 0.1*AgeKnown."),
     }
 
     return {

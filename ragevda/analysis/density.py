@@ -126,8 +126,12 @@ def analyze_token_density(ctx, proximity_rows: List[Dict],
     return {
         "per_topic": plans,
         "brand_displacement_readiness": readiness,
+        "retrieval_window_token_base_total": round(sum(window_token_base.values()), 1),
+        "windows_analyzed": sum(len(w) for w in windows_by_doc.values()),
         "method": ("real-token within-window density ratios from the BPE RAG "
-                   "chunk simulator, vs the leading competitor's top-k usage."),
+                   "chunk simulator, vs the leading competitor's top-k usage. "
+                   "Every token denominator is the real BPE per-window count, "
+                   "never a hard-coded window-size constant."),
     }
 
 

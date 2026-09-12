@@ -2,7 +2,7 @@
 
 Usage
 -----
-  # generate a starter config
+  # generate a starter config (interactive prompts for real inputs)
   python -m ragevda.cli init -o config.yaml
 
   # run from a config file (full audit)
@@ -10,9 +10,9 @@ Usage
 
   # quick run without a config file
   python -m ragevda.cli quick \
-      --brand "Acme Software" \
-      --topics "enterprise churn prediction" "SaaS pipeline analytics" \
-      --competitors Salesforce HubSpot \
+      --brand "YourBrand" \
+      --topics "your industry topic" "another topic" \
+      --competitors CompetitorA CompetitorB \
       --depth 30
 """
 
@@ -92,17 +92,40 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def _example_config() -> dict:
+def _prompt_init_config() -> dict:
+    """Interactively prompt for real config inputs instead of generating demo data."""
+    print("\n=== RAG-EVDA Configuration Generator ===")
+    print("This tool requires REAL brand/company names and topics for accurate analysis.\n")
+
+    brand = input("Target brand name: ").strip()
+    while not brand or len(brand) < 2:
+        brand = input("  (required, min 2 chars) Target brand name: ").strip()
+
+    raw = input("Industry topics (3-10), comma-separated: ")
+    topics = [t.strip() for t in raw.split(",") if t.strip()]
+    while len(topics) < 1:
+        raw = input("  (required, min 1 topic) Industry topics, comma-separated: ")
+        topics = [t.strip() for t in raw.split(",") if t.strip()]
+
+    raw = input("Competitor entities (2-5), comma-separated: ")
+    comps = [c.strip() for c in raw.split(",") if c.strip()]
+    while len(comps) < 1:
+        raw = input("  (required, min 1 competitor) Competitor entities, comma-separated: ")
+        comps = [c.strip() for c in raw.split(",") if c.strip()]
+
+    depth = input("Crawl depth per query (default 50): ").strip()
+    depth = int(depth) if depth.isdigit() and int(depth) > 0 else 50
+
+    locality = input("Locality / geo target (optional, e.g. US/UK): ").strip() or None
+
+    print(f"\nGenerating config for '{brand}' with {len(topics)} topics, "
+          f"{len(comps)} competitors...")
     return {
-        "target_brand": "Acme Software",
-        "industry_topics": [
-            "enterprise churn prediction",
-            "SaaS pipeline analytics",
-            "CRM automation",
-        ],
-        "competitor_entities": ["Salesforce", "HubSpot", "Zendesk"],
-        "crawl_depth": 50,
-        "locality": None,
+        "target_brand": brand,
+        "industry_topics": topics,
+        "competitor_entities": comps,
+        "crawl_depth": depth,
+        "locality": locality,
         "harvester": "duckduckgo",
         "embedding_model": DEFAULT_EMBEDDING_MODEL,
         "spacy_model": DEFAULT_SPACY_MODEL,
@@ -123,11 +146,14 @@ def main(argv: List[str] = None) -> int:
         if os.path.exists(args.out):
             logger.error("refusing to overwrite existing file: %s", args.out)
             return 2
+        config_data = _prompt_init_config()
         with open(args.out, "w", encoding="utf-8") as fh:
             import yaml
 
-            yaml.safe_dump(_example_config(), fh, sort_keys=False)
-        logger.info("wrote example config -> %s", args.out)
+            yaml.safe_dump(config_data, fh, sort_keys=False)
+        logger.info("wrote config -> %s", args.out)
+        logger.info("Edit the file to fine-tune settings, then run: "
+                     "python -m ragevda.cli run -c %s", args.out)
         return 0
 
     if args.command == "run":

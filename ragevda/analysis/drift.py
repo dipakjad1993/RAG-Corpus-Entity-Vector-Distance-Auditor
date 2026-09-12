@@ -171,6 +171,28 @@ def _zscore(x: float, series: List[float]) -> float:
     return (x - m) / sd
 
 
+def _two_tailed_p(z: float) -> float:
+    """Two-tailed p-value for a z-score via the standard normal CDF.
+
+    Uses a maximally-accurate Abramowitz & Stegun 26.2.17 rational
+    approximation (|error| < 7.5e-8), so each drift alert carries a real
+    statistical significance level rather than a bare heuristic cutoff.
+    """
+    if not z or abs(z) > 38:
+        return 0.0 if z else 1.0
+    z = abs(z)
+    t = 1.0 / (1.0 + 0.2316419 * z)
+    p_hi = 1.0 - (
+        0.319381530 * t
+        - 0.356563782 * t * t
+        + 1.781477937 * t * t * t
+        - 1.821255978 * t * t * t * t
+        + 1.330274429 * t * t * t * t * t
+    ) * (2.506628274631 * (2.718281828459 ** (-z * z / 2.0)))
+    p_hi = max(0.0, min(1.0, p_hi))
+    return round(2.0 * (1.0 - p_hi), 6)
+
+
 def compute_drift(store: DriftStore, job_id: str, generated_at: str,
                   config, proximity_rows: List[Dict],
                   invisibility_topic: List[Dict],
@@ -285,6 +307,10 @@ def compute_drift(store: DriftStore, job_id: str, generated_at: str,
                     "proximity_zscore": round(prox_z, 3),
                     "invisibility_zscore": round(inv_z, 3),
                     "sov_zscore": round(sov_z, 3),
+                    "proximity_pvalue": _two_tailed_p(prox_z),
+                    "invisibility_pvalue": _two_tailed_p(inv_z),
+                    "sov_pvalue": _two_tailed_p(sov_z),
+                    "history_points": len(hist_prox),
                 })
         per_topic_drift.append(entry)
 

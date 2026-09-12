@@ -23,7 +23,7 @@ logger = get_logger("ragevda.harvester.file")
 
 
 class FileHarvester:
-    SUPPORTED = (".html", ".htm", ".md", ".markdown", ".txt", ".xml")
+    SUPPORTED = (".html", ".htm", ".md", ".markdown", ".txt", ".xml", ".pdf")
 
     def __init__(self, config) -> None:
         self.config = config
@@ -31,6 +31,14 @@ class FileHarvester:
                       "fetched": 0}
 
     def _read_text(self, path: str) -> str:
+        if path.lower().endswith(".pdf"):
+            try:
+                from pypdf import PdfReader
+                reader = PdfReader(path)
+                pages = [(p.extract_text() or "") for p in reader.pages]
+                return "\n".join(pages)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("PDF parse failed %s (%s); trying raw read", path, exc)
         with open(path, "r", encoding="utf-8", errors="ignore") as fh:
             return fh.read()
 
@@ -56,7 +64,7 @@ class FileHarvester:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("cannot read %s: %s", p, exc)
                 continue
-            source_type = "reddit" if "reddit" in p.lower() else "web"
+            source_type = "file"
             if p.lower().endswith((".html", ".htm", ".xml")):
                 text = extract_text(raw, url=p)
             else:
@@ -78,12 +86,13 @@ class FileHarvester:
                     text=text,
                     raw_html=raw if p.lower().endswith((".html", ".htm")) else "",
                     final_url=f"file://{os.path.abspath(p)}",
-                    http_status=200,
+                    http_status=0,
                     content_hash=content_hash,
                     fetch_ms=0.0,
                     redirects=[],
                     headers={"last-modified": last_modified,
-                             "content-type": "text/local-file"},
+                             "content-type": "text/local-file",
+                             "x-ragevda-source": "file"},
                 )
             )
         logger.info("file harvester loaded %d documents", len(docs))

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ragevda"
-version = "1.0.0"
+version = "1.2.0"
 description = "RAG Corpus Entity & Vector Distance Auditor - zero-cost local vector intelligence for AI-search visibility."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,6 +28,12 @@ dependencies = [
     "pyyaml>=6.0.0",
     "pandas>=2.0.0",
     "ddgs>=4.0.0",
+    "flask>=3.0.0",
+    "transformers>=4.38.0",
+    "huggingface_hub>=0.20.0",
+    "tokenizers>=0.15.0",
+    "reportlab>=4.0.0",
+    "pypdf>=4.0.0",
 ]
 
 [project.scripts]

@@ -45,6 +45,14 @@ DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
+# Minimum characters required for brand/topic/competitor names to prevent
+# accidentally trivial inputs (e.g. "a", "AI", single letters).
+_MIN_NAME_LEN = 2
+# Maximum allowed number of industry topics (prevents combinatorial explosion
+# in query expansion and SoV matrix).
+_MAX_TOPICS = 20
+# Maximum allowed number of competitor entities.
+_MAX_COMPETITORS = 15
 
 # The AI "engine matrix" -- the answer engines + search interfaces whose RAG
 # retrieval behaviour we model. Scores are reported per engine so teams can
@@ -64,6 +72,9 @@ DEFAULT_QUERY_TEMPLATES = {
     "transactional": "best {topic} software tools",
     "comparison": "{topic} vs alternatives comparison",
     "research": "how to {topic} guide",
+    "commercial": "top {topic} solutions compared",
+    "navigational": "{brand} {topic} official site",
+    "local": "{topic} near me {brand}",
 }
 
 # RAG contextual-window defaults (tokens). Most retrieval back-ends index
@@ -189,15 +200,50 @@ class RunConfig:
     def validate(self) -> None:
         if not self.target_brand or not self.target_brand.strip():
             raise ValueError("target_brand must be a non-empty string")
+        brand = self.target_brand.strip()
+        if len(brand) < _MIN_NAME_LEN:
+            raise ValueError(
+                f"target_brand must be at least {_MIN_NAME_LEN} characters "
+                f"(got {len(brand)}: {brand!r}). Use your real brand name, "
+                "not a placeholder."
+            )
 
         topics = [t.strip() for t in self.industry_topics if t and t.strip()]
         if len(topics) < 1:
-            raise ValueError("Provide at least one industry topic")
+            raise ValueError(
+                "Provide at least one industry topic. These are the real "
+                "topics/keywords your brand competes for in AI search."
+            )
+        if len(topics) > _MAX_TOPICS:
+            raise ValueError(
+                f"Too many industry topics ({len(topics)}; max {_MAX_TOPICS}). "
+                "Reduce to avoid combinatorial explosion in query expansion."
+            )
+        for t in topics:
+            if len(t) < _MIN_NAME_LEN:
+                raise ValueError(
+                    f"Industry topic {t!r} is too short (min {_MIN_NAME_LEN} "
+                    "chars). Use descriptive topic phrases, not single words."
+                )
         self.industry_topics = topics
 
         comps = [c.strip() for c in self.competitor_entities if c and c.strip()]
         if len(comps) < 1:
-            raise ValueError("Provide at least one competitor entity")
+            raise ValueError(
+                "Provide at least one competitor entity. These are the real "
+                "companies/brands you compete against in AI search results."
+            )
+        if len(comps) > _MAX_COMPETITORS:
+            raise ValueError(
+                f"Too many competitors ({len(comps)}; max {_MAX_COMPETITORS}). "
+                "Focus on your top direct competitors."
+            )
+        for c in comps:
+            if len(c) < _MIN_NAME_LEN:
+                raise ValueError(
+                    f"Competitor {c!r} is too short (min {_MIN_NAME_LEN} "
+                    "chars). Use real company/brand names."
+                )
         self.competitor_entities = comps
 
         if self.crawl_depth < 1:
@@ -241,12 +287,13 @@ class RunConfig:
         if self.top_k_retrieval < 1:
             raise ValueError("top_k_retrieval must be >= 1")
         if self.search_intent not in ("informational", "transactional",
-                                      "comparison", "research", "local") \
+                                       "comparison", "research", "local",
+                                       "commercial", "navigational") \
                 and self.search_intent not in self.query_templates:
             raise ValueError(
                 "search_intent must be a known intent (informational / "
-                "transactional / comparison / research / local) or a key of "
-                "query_templates")
+                "transactional / comparison / research / local / commercial / "
+                "navigational) or a key of query_templates")
 
         # Warn (not fail) on malformed topic/competitor strings that look
         # accidentally split -- typically unbalanced parentheses from a
@@ -259,6 +306,22 @@ class RunConfig:
                     "this is usually a config typo and degrades embedding "
                     "quality. Fix the parentheses before trusting the output.",
                     bad,
+                )
+
+        # Warn on suspiciously generic names that often come from placeholder
+        # configs rather than real brand analysis.
+        _GENERIC_NAMES = {
+            "acme", "widget", "corp", "company", "enterprise", "software",
+            "product", "brand", "business", "inc", "llc", "ltd", "group",
+            "test", "demo", "example", "placeholder", "smoke", "fake",
+            "compa", "compb", "alpha", "beta",
+        }
+        all_names = [brand.lower()] + [c.lower() for c in self.competitor_entities]
+        for name in all_names:
+            if name in _GENERIC_NAMES:
+                logger.warning(
+                    "Name %r looks like a placeholder/generic. Use real "
+                    "brand/company names for accurate analysis results.", name
                 )
 
     # -----------------------------------------------------------------------
@@ -317,7 +380,7 @@ class RunConfig:
 
     def all_aliases_for(self, entity: str) -> List[str]:
         """Every alias (incl. sub-brands) owned by an entity, original-case."""
-        return [self.entity_alias_map().get(entity, [])]  # kept for API compat
+        return list(self.entity_alias_map().get(entity, []))
 
     def entity_domain_map(self) -> Dict[str, List[str]]:
         """Owned/known domains per entity (original-case keys), lowercased."""

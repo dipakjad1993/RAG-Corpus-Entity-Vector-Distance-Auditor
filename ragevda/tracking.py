@@ -83,7 +83,8 @@ def load_runs(jobs_dir: str = DEFAULT_JOBS_DIR) -> List[RunRecord]:
                 }
             topics = cfg.get("industry_topics", []) or []
             comps = cfg.get("competitor_entities", []) or []
-            key = cfg.get("target_brand", "") + "|" + "|".join(sorted(topics))
+            key = (cfg.get("target_brand", "") + "|" + "|".join(sorted(topics))
+                   + "||" + "|".join(sorted(comps)))
             runs.append(RunRecord(
                 job_id=entry,
                 generated_at=_parse_ts(meta.get("generated_at", "")),

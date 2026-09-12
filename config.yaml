@@ -1,35 +1,31 @@
 # =====================================================================
-# RAG-EVDA — INPUTS  (Section 2 of the brief)
-# Fill in the five fields below, then run:
+# RAG-EVDA — INPUTS
+# Fill in the fields below with YOUR REAL brand details, then run:
 #     python -m ragevda.cli run -c config.yaml
-# (or just run `python -m ragevda.cli interactive` and type them in.)
+# WARNING: Do NOT use placeholder names (Acme, Widget, CompA, etc.)
+# The tool validates that real, non-trivial names are supplied.
+#
+# For a guided, interactive generator use: python -m ragevda.cli init
 # =====================================================================
 
-# 1) TARGET BRAND NAME
-#    The precise name of your brand / site.
-target_brand: "Acme Software"
+# 1) TARGET BRAND NAME  (your real brand / site name)
+target_brand: "YourBrand"
 
-# 2) TARGET INDUSTRY TOPICS / CONCEPTS
-#    Any number of high-value contextual topics or seed keywords (no limit).
+# 2) TARGET INDUSTRY TOPICS / CONCEPTS  (real topics you compete for)
 industry_topics:
-  - "enterprise churn prediction"
-  - "SaaS pipeline analytics"
-  - "CRM automation"
+  - "your primary industry topic"
+  - "your secondary topic"
+  - "your tertiary topic"
 
-# 3) COMPETITOR ENTITIES
-#    Any number of direct competitor brand names (no limit).
+# 3) COMPETITOR ENTITIES  (real direct competitor names)
 competitor_entities:
-  - "Salesforce"
-  - "HubSpot"
-  - "Zendesk"
+  - "CompetitorA"
+  - "CompetitorB"
 
-# 4) CRAWL DEPTH PARAMETER
-#    How many search results / web pages to scrape per query (1-200).
+# 4) CRAWL DEPTH PARAMETER  (results/pages scraped per query, 1-200)
 crawl_depth: 50
 
-# 5) TARGET LOCALITY / GEOGRAPHIC TARGET (OPTIONAL)
-#    Region / country code to localize search (e.g. "US", "UK", "Detroit").
-#    Leave as null for global.
+# 5) TARGET LOCALITY / GEOGRAPHIC TARGET  (e.g. "US", "UK"; null = global)
 locality: null
 
 # ---------------------------------------------------------------------
@@ -43,3 +39,4 @@ include_news: true
 embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
 spacy_model: "en_core_web_sm"
 output_dir: "./web_output"
+require_real_models: true        # never emit fake/degraded numbers

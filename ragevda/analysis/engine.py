@@ -171,6 +171,10 @@ def analyze_engine_matrix(ctx, citation_result, invisibility_result) -> Dict:
     for topic, docs in topic_docs.items():
         total_docs = len(docs)
         for eng in engines:
+            if eng not in ENGINE_PROFILES:
+                logger.warning(
+                    "unknown engine %r — using Google AI Overviews weights as "
+                    "documented assumption, not measurement", eng)
             profile = ENGINE_PROFILES.get(eng, ENGINE_PROFILES.get(
                 "Google AI Overviews", {}))
             brand_w = 0.0

@@ -81,7 +81,7 @@ def new_document(
         text=text,
         raw_html=raw_html,
         domain=domain_of(url),
-        extracted_at=datetime.datetime.utcnow().isoformat() + "Z",
+        extracted_at=datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
         metadata=metadata or {},
         final_url=final_url or url,
         http_status=http_status,

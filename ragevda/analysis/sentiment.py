@@ -3,7 +3,7 @@
 Retrieval is not just about *whether* your brand appears in a chunk -- it is
 about the *framing* of the tokens surrounding it. If an AI engine retrieves
 your brand but the adjacent window carries negative or outdated framing
-("Acme is expensive", "Acme had a data breach"), the resulting RAG answer can
+("the product is expensive", "the vendor had a data breach"), the resulting RAG answer can
 hurt rather than help. This module computes a real, model-driven sentiment
 polarity for every brand/competitor mention inside its retrieval window and
 flags "Brand Sentiment Risk" paragraphs.
@@ -56,20 +56,44 @@ _SENTI_LOAD_ERROR = None
 
 
 def _get_transformer_pipeline():
-    """Load the cached transformer sentiment pipeline once (thread-safe)."""
+    """Load the cached transformer sentiment pipeline once (thread-safe).
+
+    Tries fully-offline local cache first (no network at audit time), then a
+    single authenticated network download on first-ever run. Never returns a
+    fake pipeline — returns None only when no real model can be loaded.
+    """
     global _SENTI_PIPELINE, _SENTI_LOAD_ERROR
     with _senti_lock:
         if _SENTI_PIPELINE is not None or _SENTI_LOAD_ERROR is not None:
             return _SENTI_PIPELINE
         try:
+            import os as _os
             from transformers import (
                 AutoModelForSequenceClassification,
                 AutoTokenizer,
                 pipeline,
             )
-            tok = AutoTokenizer.from_pretrained(TRANSFORMER_MODEL)
-            mod = AutoModelForSequenceClassification.from_pretrained(
-                TRANSFORMER_MODEL)
+            # 1) offline-first: use locally-cached checkpoint when present.
+            _prev = _os.environ.get("HF_HUB_OFFLINE")
+            _os.environ["HF_HUB_OFFLINE"] = "1"
+            try:
+                tok = AutoTokenizer.from_pretrained(TRANSFORMER_MODEL, local_files_only=True)
+                mod = AutoModelForSequenceClassification.from_pretrained(
+                    TRANSFORMER_MODEL, local_files_only=True)
+            except Exception:
+                # 2) first-ever run: allow one network download, then cache.
+                if _prev is None:
+                    _os.environ.pop("HF_HUB_OFFLINE", None)
+                else:
+                    _os.environ["HF_HUB_OFFLINE"] = _prev
+                tok = AutoTokenizer.from_pretrained(TRANSFORMER_MODEL)
+                mod = AutoModelForSequenceClassification.from_pretrained(
+                    TRANSFORMER_MODEL)
+            else:
+                if _prev is None:
+                    _os.environ.pop("HF_HUB_OFFLINE", None)
+                else:
+                    _os.environ["HF_HUB_OFFLINE"] = _prev
             _SENTI_PIPELINE = pipeline(
                 "sentiment-analysis", model=mod, tokenizer=tok,
                 truncation=True, max_length=512, device=-1,
@@ -178,14 +202,15 @@ def _classify_batch(pipeline, texts: List[str]) -> List[Tuple[str, float]]:
     """Score texts with the transformer model.
 
     Returns list of (label, score). Robust to sub-512 windows and to any
-    prediction shape the pipeline returns.
+    prediction shape the pipeline returns. Batch exceptions are counted and
+    logged (not silently hidden) — affected windows are marked neutral.
     """
     if not texts:
         return []
     try:
         results = pipeline(texts, batch_size=16)
     except Exception as exc:  # noqa: BLE001 - never let model error kill audit
-        logger.warning("transformer sentiment batch failed: %s", exc)
+        logger.warning("transformer sentiment batch failed for %d texts: %s", len(texts), exc)
         return [("neutral", 0.5)] * len(texts)
     out: List[Tuple[str, float]] = []
     for r in results:

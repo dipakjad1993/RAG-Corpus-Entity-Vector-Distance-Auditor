@@ -41,20 +41,24 @@ class CoOccurrenceGraph:
         (brand + competitors + topics); they are always added as nodes even
         if a paragraph only contains one of them (self-loop avoided but they
         persist in the graph for later analysis).
+
+        Keys are stored lowercased (with original case in ``orig`` attr) so
+        lookups in :meth:`bind_strength` / :meth:`neighbors` are case-insensitive
+        and never silently return 0 for capitalized brands.
         """
         focus = {e.lower(): e for e in (focus_entities or [])}
-        for ent in focus.values():
-            self.graph.add_node(ent, kind="focus")
+        for low, orig in focus.items():
+            self.graph.add_node(low, kind="focus", orig=orig)
 
         for para in self._paragraphs(text):
             para_low = para.lower()
             present: List[str] = []
             for low, orig in focus.items():
                 if low in para_low:
-                    present.append(orig)
+                    present.append(low)
             # also register any focus entity co-occurring with itself (node)
             for e in present:
-                self.graph.add_node(e, kind="focus")
+                self.graph.add_node(e, kind="focus", orig=focus.get(e, e))
             # pairwise co-occurrence among focus entities
             for i in range(len(present)):
                 for j in range(i + 1, len(present)):
@@ -75,7 +79,9 @@ class CoOccurrenceGraph:
         out: Dict[str, int] = {}
         if e in self.graph:
             for nb, data in self.graph[e].items():
-                out[nb] = int(data.get("weight", 0))
+                # Return original-case label when available for readability.
+                label = self.graph.nodes[nb].get("orig", nb)
+                out[label] = int(data.get("weight", 0))
         return out
 
     def topic_bind_strengths(self, entity: str, topics: List[str]) -> Dict[str, int]:

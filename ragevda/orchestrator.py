@@ -19,7 +19,6 @@ from dataclasses import replace as dc_replace
 from typing import Dict, List, Optional
 
 from .config import RunConfig
-from .harvester import build_harvester
 from .nlp import Embedder, NER, CoOccurrenceGraph
 from .analysis import (
     build_context, analyze_proximity, analyze_citation_gap,
@@ -168,7 +167,7 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
     logger.info("RAG-EVDA v%s starting audit for brand '%s'",
                 __version__, config.target_brand)
     import uuid
-    job_id = datetime.datetime.utcnow().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
+    job_id = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
     ctx_job_id = job_id
 
     # ---- 1. Harvest --------------------------------------------------
@@ -262,7 +261,7 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
     advanced = run_advanced(
         ctx, config, prox["rows"], cit, inv,
         job_id=ctx_job_id,
-        generated_at=datetime.datetime.utcnow().isoformat() + "Z",
+        generated_at=datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
     )
 
     # ---- 4. Persist + report ---------------------------------------
@@ -315,22 +314,44 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
 
     # ---- Data integrity / verification -----------------------------
     # A transparent, reproducible score (0-100) for how much to trust THIS run.
-    #  40 pts: real ML models loaded (sentence-transformers + spaCy)
-    #  30 pts: harvest succeeded (non-empty, no empty-corpus warning)
-    #  20 pts: share of target entities actually present in the corpus
-    #  10 pts: every fetched doc has a recorded HTTP 200
+    # The score is a weighted composite of independent, auditable signals:
+    #   38 pts: real ML models loaded (sentence-transformers + spaCy)
+    #   28 pts: harvest succeeded (non-empty, no empty-corpus warning)
+    #   18 pts: share of target entities actually present in the corpus
+    #    8 pts: every fetched doc has a recorded HTTP 200
+    #    8 pts: live-source fraction (HTTP 2xx here and now) from freshness probe
+    # Each component is exported separately below so a low score can be traced
+    # to exactly which signal failed (never a black box).
     models_real = (ctx.embedding_kind == "sentence-transformers"
                    and ctx.ner_kind == "spacy")
     harvest_ok = bool(docs) and not harvest_warning
     focus = config.all_entities()
     supported = sum(1 for s in ctx.entity_stats.values() if s.total_mentions > 0)
     support_frac = (supported / len(focus)) if focus else 0.0
-    prov_complete = all(d.http_status == 200 for d in docs) if docs else False
+    prov_complete = all(
+        (d.http_status == 200 and not str(getattr(d, "url", "")).startswith("file://"))
+        or getattr(d, "source_type", "") == "file"
+        for d in docs
+    ) if docs else False
+    # File-corpus runs are provenance-complete via hash+mtime, but must not
+    # inflate the HTTP-live score — live_frac comes from freshness (file docs
+    # are live=False there).
     # Freshness: share of sources that are LIVE (HTTP 2xx here and now).
     live_frac = (freshness.get("summary", {}).get("live_pct", 0.0) / 100.0) if docs else 0.0
+    # Sub-scores, each on 0..1, audited independently.
+    sub_scores = {
+        "models_real_score": 1.0 if models_real else 0.0,
+        "harvest_ok_score": 1.0 if harvest_ok else 0.0,
+        "support_score": round(min(1.0, support_frac), 3),
+        "provenance_score": 1.0 if prov_complete else 0.0,
+        "live_score": round(live_frac, 3),
+    }
     verification_score = round(
-        38.0 * models_real + 28.0 * harvest_ok
-        + 18.0 * support_frac + 8.0 * prov_complete + 8.0 * live_frac, 1)
+        38.0 * sub_scores["models_real_score"]
+        + 28.0 * sub_scores["harvest_ok_score"]
+        + 18.0 * sub_scores["support_score"]
+        + 8.0 * sub_scores["provenance_score"]
+        + 8.0 * sub_scores["live_score"], 1)
     verified = bool(models_real and harvest_ok and support_frac >= 0.5
                     and live_frac >= 0.9)
     data_integrity = {
@@ -339,6 +360,11 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
         "embedding_model": ctx.embedding_model,
         "ner_kind": ctx.ner_kind,
         "ner_model": ctx.ner_model,
+        "models_real_score": sub_scores["models_real_score"],
+        "harvest_ok_score": sub_scores["harvest_ok_score"],
+        "support_score": sub_scores["support_score"],
+        "provenance_score": sub_scores["provenance_score"],
+        "live_score": sub_scores["live_score"],
         "harvest_ok": harvest_ok,
         "harvested_docs": len(docs),
         "dedup_removed": dedup_removed,
@@ -354,17 +380,19 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
     }
     if not verified:
         logger.warning(
-            "Run verification_score=%.1f (verified=%s). Models_real=%s "
-            "harvest_ok=%s support_frac=%.2f live_frac=%.2f -- treat outputs "
-            "as LOW CONFIDENCE.",
-            verification_score, verified, models_real, harvest_ok,
-            support_frac, live_frac)
+            "Run verification_score=%.1f (verified=%s). Sub-scores: models=%s "
+            "harvest=%s support=%s provenance=%s live=%s -- treat outputs "
+            "as LOW CONFIDENCE and inspect the failing sub-score(s).",
+            verification_score, verified,
+            sub_scores["models_real_score"], sub_scores["harvest_ok_score"],
+            sub_scores["support_score"], sub_scores["provenance_score"],
+            sub_scores["live_score"])
 
     report = {
         "meta": {
             "tool": "RAG-EVDA",
             "version": __version__,
-            "generated_at": datetime.datetime.utcnow().isoformat() + "Z",
+            "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
             "config": config.to_dict(),
             "embedding_kind": ctx.embedding_kind,
             "embedding_model": ctx.embedding_model,

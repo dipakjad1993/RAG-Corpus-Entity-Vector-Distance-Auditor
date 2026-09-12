@@ -45,17 +45,43 @@ _tokenizer_lock = threading.Lock()
 _TOKENIZER = None
 
 
-def _get_tokenizer():
-    """Load a real BPE tokenizer (from the cached MiniLM model) once."""
+def _get_tokenizer(require_real: bool = False):
+    """Load a real BPE tokenizer (from the cached MiniLM model) once.
+
+    When ``require_real=True`` and no locally-cached tokenizer can be loaded,
+    raises RuntimeError instead of silently falling back to char/4 math, so
+    reports can never be mistaken for real-BPE runs.
+    """
     global _TOKENIZER
     with _tokenizer_lock:
         if _TOKENIZER is not None:
+            if _TOKENIZER is False and require_real:
+                raise RuntimeError(
+                    "Real BPE tokenizer is required (require_real_models=True) "
+                    "but sentence-transformers/all-MiniLM-L6-v2 tokenizer is not "
+                    "locally cached. Pre-cache it or set require_real_models=False "
+                    "for triage-only char/4 estimates."
+                )
             return _TOKENIZER
         try:
+            import os as _os
             from transformers import AutoTokenizer
-            _TOKENIZER = AutoTokenizer.from_pretrained(
-                "sentence-transformers/all-MiniLM-L6-v2")
+            _prev = _os.environ.get("HF_HUB_OFFLINE")
+            _os.environ["HF_HUB_OFFLINE"] = "1"
+            try:
+                _TOKENIZER = AutoTokenizer.from_pretrained(
+                    "sentence-transformers/all-MiniLM-L6-v2", local_files_only=True)
+            finally:
+                if _prev is None:
+                    _os.environ.pop("HF_HUB_OFFLINE", None)
+                else:
+                    _os.environ["HF_HUB_OFFLINE"] = _prev
         except Exception as exc:  # noqa: BLE001
+            if require_real:
+                raise RuntimeError(
+                    "Real BPE tokenizer is required (require_real_models=True) "
+                    f"but could not be loaded offline: {exc}"
+                ) from exc
             logger.warning("real tokenizer unavailable (%s); using char/4 fallback", exc)
             _TOKENIZER = False
         return _TOKENIZER
@@ -245,29 +271,29 @@ def _focus_count_by_window(wins: List[ChunkWindow]) -> Dict[int, int]:
 
 
 def _mention_token_span(text, patterns, alias_to_entity, entity) -> int:
-    """Estimate the real BPE token length of all spans matching ``entity``."""
-    low_entity = entity.lower()
+    """Real BPE token length of all spans matching ``entity``.
+
+    Each verbatim matched mention is encoded with the real tokenizer and the
+    token counts summed. Falls back to chars/4 only when no tokenizer is
+    available (and logs it via _get_tokenizer).
+    """
     # Find the pattern key(s) that map back to this entity.
     keys = [k for k, e in alias_to_entity.items() if e == entity]
-    total_chars = 0
     if not keys:
         return 0
+    tok = _get_tokenizer()
+    total = 0
     for k in keys:
         pat = patterns.get(k)
         if not pat:
             continue
         for m in pat.finditer(text):
-            total_chars += (m.end() - m.start())
-    if total_chars == 0:
-        return 0
-    tok = _get_tokenizer()
-    if tok:
-        try:
-            # estimate tokens from the total matched char length by encoding
-            # a whitespace-equivalent string; close enough and deterministic
-            sample = text
-            # simpler: encode the whole text is expensive; estimate via chars
-            return max(1, int(round(total_chars / 4.0)))
-        except Exception:  # noqa: BLE001
-            pass
-    return max(1, int(round(total_chars / 4.0)))
+            span = m.group(0)
+            if tok:
+                try:
+                    total += max(1, len(tok.encode(span, add_special_tokens=False)))
+                    continue
+                except Exception:  # noqa: BLE001
+                    pass
+            total += max(1, int(round(len(span) / 4.0)))
+    return total

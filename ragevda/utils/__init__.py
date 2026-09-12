@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import hashlib
 import re
+import time
 import unicodedata
 from typing import Iterable, List, Optional
 
@@ -111,6 +112,7 @@ class HttpClient:
         self.max_retries = max_retries
 
     def get(self, url: str, **kwargs):
+        import random
         last_exc: Optional[Exception] = None
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -118,10 +120,13 @@ class HttpClient:
                 return resp
             except Exception as exc:  # noqa: BLE001 - network resilience
                 last_exc = exc
+                backoff = min(30.0, (2 ** (attempt - 1)) * 0.5 + random.uniform(0, 0.5))
                 logging.getLogger("ragevda.http").warning(
-                    "GET %s failed (attempt %d/%d): %s",
-                    url, attempt, self.max_retries, exc,
+                    "GET %s failed (attempt %d/%d): %s [backoff %.1fs]",
+                    url, attempt, self.max_retries, exc, backoff,
                 )
+                if attempt < self.max_retries:
+                    time.sleep(backoff)
         if last_exc:
             raise last_exc
         raise RuntimeError("unreachable")
