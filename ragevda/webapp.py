@@ -28,7 +28,7 @@ import queue
 import re
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List
 
 from flask import Flask, Response, request, send_from_directory, redirect
@@ -687,7 +687,7 @@ def _start_run(profile: dict) -> str:
         drift_history_keep=_int(profile.get("drift_history_keep"), 60),
         output_dir=os.path.join(WEB_OUTPUT, "jobs", "temp"),
     )
-    job_id = datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
+    job_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
     job_dir = os.path.join(WEB_OUTPUT, "jobs", job_id)
     os.makedirs(job_dir, exist_ok=True)
     cfg.output_dir = job_dir
@@ -1140,7 +1140,7 @@ def create_app() -> Flask:
                 interval = 360
             unit = form.get("interval_unit") or "min"
             interval *= {"min": 1, "hour": 60, "day": 1440}.get(unit, 1)
-            sid = datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S") + uuid.uuid4().hex[:4]
+            sid = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S") + uuid.uuid4().hex[:4]
             sched = Schedule(
                 id=sid,
                 name=form.get("name") or form.get("target_brand") or "schedule",
