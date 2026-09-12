@@ -1,5 +1,11 @@
 # 🔍 RAG-EVDA — RAG Corpus Entity & Vector Distance Auditor
 
+![CI](https://github.com/dipakjad1993/RAG-Corpus-Entity-Vector-Distance-Auditor/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License: MIT](https://img.shields.io/badge/License-MIT-green)
+![Local-only](https://img.shields.io/badge/LLM-100%25%20local-orange)
+![Version](https://img.shields.io/badge/version-1.2.0-black)
+
 > **A zero-cost, fully-local intelligence engine that decodes how modern AI search
 > engines (Gemini, SearchGPT, Google AI Overviews, Perplexity, Bing Copilot)
 > semantically perceive a brand relative to its competitors inside a
@@ -11,6 +17,38 @@ defining your industry niche, processes them through **100% local** NLP models,
 and computes your brand's **exact semantic distance** from core topics and
 competitors — with **zero OpenAI / Ahrefs / Semrush / BrightEdge API keys** and
 **zero data leaving your machine**.
+
+| | | |
+|---|---|---|
+| 📄 **125 docs** audited in the reference Guardian run | 💰 **$0** API cost, forever | 📦 **22 output files** per run (JSON/CSV/HTML/PDF/DuckDB) |
+
+### Try it in 30 seconds (offline, no network)
+
+```bash
+pip install -r requirements.txt
+python -m spacy download en_core_web_sm
+python -m ragevda.cli run -c examples/offline_demo/config.yaml
+# → opens ./ragevda_output_offline_demo/dashboard.html (10 sample docs, real local models)
+```
+
+### Architecture
+
+```mermaid
+flowchart LR
+    CFG[Config / CLI / Web UI] --> H[Harvester<br/>DDG · SearXNG · RSS · file]
+    H --> NLP[Embeddings + NER<br/>BGE/MiniLM · spaCy · graph]
+    NLP --> BRAIN[Analysis brain<br/>proximity · gaps · SoV · density · sentiment · drift]
+    BRAIN --> OUT[(DuckDB + CSV/JSON/HTML/PDF)]
+```
+
+### Why not a black-box visibility SaaS?
+
+| | RAG-EVDA | Profound / Peec / Otterly-style SaaS | Semrush / Ahrefs |
+|---|---|---|---|
+| Cost | $0 local | ~$99–999/mo | ~$139–499/mo |
+| Data leaves machine | Never | Yes (black-box score) | Yes |
+| Metric | Auditable vector math (proximity / invisibility / token-displacement) | Proprietary score | Ranks / backlinks |
+| Provenance | Full DuckDB + hashes + latencies, reproducible offline | Not inspectable | Vendor trust |
 
 Every number in the reports is **real, verifiable, and enterprise-grade**:
 - real harvested documents with real URLs, content hashes, and fetch latencies
@@ -71,7 +109,9 @@ guidelines, and the project's About + tags.**
 19. [About](#about)
 20. [Changelog](#changelog)
 21. [Tags](#tags)
-22. [License](#license)
+22. [Roadmap](#roadmap)
+23. [Author](#author)
+24. [License](#license)
 
 ---
 
@@ -938,6 +978,25 @@ are built exclusively on live fetches and local ML inference.
 `gemini` · `searchgpt` · `google-ai-overviews` · `bing-copilot` ·
 `tokenization` · `knowledge-graph` · `negative-seo` · `content-brief` ·
 `json-ld` · `offline-first`
+
+---
+
+## Roadmap
+
+Near-term: hosted sample dashboard (`gh-pages`), release artifacts with sample
+`report.json`, auto_probe/deep_analysis module splits, real `robots.txt`
+enforcement hardening, 60% test coverage, EVAL v2 (hand-labeled citation-gap
+precision/recall + RAGAS comparison). Full list in [`ROADMAP.md`](ROADMAP.md) —
+contributions welcome per [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+---
+
+## Author
+
+**Dipak Jadhav** ([@dipakjad1993](https://github.com/dipakjad1993)) — Applied AI
+engineer building cost-aware, fully-local LLM systems. Open to Applied LLM /
+MLOps / MarTech-SEO roles. Star ⭐ the repo if auditable AI visibility matters
+to you.
 
 ---
 
