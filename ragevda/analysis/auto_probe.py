@@ -782,11 +782,19 @@ def _is_generic_entity(name: str) -> bool:
     return all(w in _GENERIC_ENTITY_WORDS for w in words)
 
 
+_CTA_FIRST_WORDS = frozenset({
+    "discover", "explore", "visit", "read", "shop", "buy", "get", "download",
+    "join", "sign", "follow", "watch", "listen", "try", "start", "compare",
+    "meet", "see", "find",
+})
+
+
 def _sanitize_entities(names: List[str], brand: str) -> List[str]:
     """Normalize + drop generic/junk entity candidates (never invent any)."""
     out: List[str] = []
     brand_l = (brand or "").lower()
     brand_clean = _clean_entity_name(brand).lower()
+    brand_words = set(brand_l.split()) | set(brand_clean.split())
     for n in names or []:
         c = _clean_entity_name(n)
         if not c or len(c) < 3 or len(c) > 48:
@@ -794,7 +802,19 @@ def _sanitize_entities(names: List[str], brand: str) -> List[str]:
         if c.lower() in (brand_l, brand_clean) or brand_l in c.lower() \
                 or (brand_clean and brand_clean in c.lower()):
             continue
-        if _is_generic_entity(c):
+        words = [w.strip(".,;:!?()").lower() for w in c.split()]
+        words = [re.sub(r"['’]s$", "", w) for w in words]
+        words = [w for w in words if w]
+        if not words:
+            continue
+        if words[0] in _CTA_FIRST_WORDS:
+            continue  # "Discover The Guardian" — CTA copy, not a rival
+        if _is_generic_entity(" ".join(words)):
+            continue
+        # brand-stem overlap ("Guardian News" vs brand "Theguardian") means
+        # brand family / house brand, never a competitor.
+        if any(len(w) > 4 and any(w in bw or bw in w for bw in brand_words)
+               for w in words):
             continue
         out.append(c)
     return _dedupe(out, limit=8)

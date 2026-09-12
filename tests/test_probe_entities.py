@@ -26,3 +26,13 @@ def test_distinctive_multiword_kept():
 def test_brand_never_competitor():
     out = _sanitize_entities(["TestBrand", "TestBrand Pro"], "TestBrand")
     assert out == []
+
+
+def test_brand_stem_overlap_rejected():
+    out = _sanitize_entities(["Guardian News", "Discover The Guardian",
+                              "Media's", "Telegraph Media Group"],
+                             "Theguardian")
+    assert "Guardian News" not in out
+    assert "Discover The Guardian" not in out
+    assert "Media's" not in out
+    assert "Telegraph Media Group" in out
