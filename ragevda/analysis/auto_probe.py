@@ -1261,7 +1261,8 @@ def _build_footprints(base_url: str, links: List[Tuple[str, str]],
             continue
         engines = ("Perplexity", "Gemini", "Bing Copilot", "SearchGPT")
         engine = engines[used % len(engines)]
-        lines.append(f"{engine}|{re.sub(r'\\s+', ' ', text)[:38]}|{href}")
+        label = re.sub(r"\s+", " ", text)[:38]
+        lines.append(f"{engine}|{label}|{href}")
         used += 1
     return lines
 
