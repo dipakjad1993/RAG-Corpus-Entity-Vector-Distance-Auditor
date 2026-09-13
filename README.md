@@ -5,6 +5,10 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 ![Local-only](https://img.shields.io/badge/LLM-100%25%20local-orange)
 ![Version](https://img.shields.io/badge/version-2.0.0-black)
+[![Live demo](https://img.shields.io/badge/demo-live%20on%20Render-brightgreen)](https://rag-corpus-entity-vector-distance-auditor.onrender.com/)
+
+> **Try it live:** https://rag-corpus-entity-vector-distance-auditor.onrender.com/
+> (full enterprise UI — 11 inputs, Auto-Detect, Deep Analysis, Outputs hub).
 
 > **A zero-cost, fully-local intelligence engine that decodes how modern AI search
 > engines (Gemini, SearchGPT, Google AI Overviews, Perplexity, Bing Copilot)
@@ -443,6 +447,8 @@ uvicorn ragevda.api:app --host 127.0.0.1 --port 9000
 ```
 
 ### Deploy on Render (Docker)
+
+**Live deployment:** https://rag-corpus-entity-vector-distance-auditor.onrender.com/
 
 The `Dockerfile` is Render-ready: it pre-caches all models at build time,
 runs as non-root, binds `0.0.0.0:$PORT` automatically, and serves the Flask UI
