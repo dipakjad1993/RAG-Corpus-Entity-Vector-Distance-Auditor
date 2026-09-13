@@ -46,9 +46,14 @@ from ..utils import get_logger
 logger = get_logger("ragevda.analysis.sentiment")
 
 # The transformer sentiment model used when available. It is cached locally
-# (``cardiffnlp/twitter-roberta-base-sentiment-latest``) so loading is offline
+# (``tabularisai/multilingual-sentiment-analysis``) so loading is offline
 # and instantaneous on machines that have already run the tool.
-TRANSFORMER_MODEL = "cardiffnlp/twitter-roberta-base-sentiment-latest"
+# 2026 default: multilingual web-tone model (tweet-trained RoBERTa kept as
+# legacy fallback only — tweets != web content tone).
+TRANSFORMER_MODEL = "tabularisai/multilingual-sentiment-analysis"
+LEGACY_TRANSFORMER_MODEL = "cardiffnlp/twitter-roberta-base-sentiment-latest"
+# LLM-judge (different family than generator, temp 0) for borderline web tone.
+LLM_JUDGE_MODEL = "qwen2.5:7b"
 
 _senti_lock = threading.Lock()
 _SENTI_PIPELINE = None
@@ -77,9 +82,14 @@ def _get_transformer_pipeline():
             _prev = _os.environ.get("HF_HUB_OFFLINE")
             _os.environ["HF_HUB_OFFLINE"] = "1"
             try:
-                tok = AutoTokenizer.from_pretrained(TRANSFORMER_MODEL, local_files_only=True)
-                mod = AutoModelForSequenceClassification.from_pretrained(
-                    TRANSFORMER_MODEL, local_files_only=True)
+                try:
+                    tok = AutoTokenizer.from_pretrained(TRANSFORMER_MODEL, local_files_only=True)
+                    mod = AutoModelForSequenceClassification.from_pretrained(
+                        TRANSFORMER_MODEL, local_files_only=True)
+                except Exception:
+                    tok = AutoTokenizer.from_pretrained(LEGACY_TRANSFORMER_MODEL, local_files_only=True)
+                    mod = AutoModelForSequenceClassification.from_pretrained(
+                        LEGACY_TRANSFORMER_MODEL, local_files_only=True)
             except Exception:
                 # 2) first-ever run: allow one network download, then cache.
                 if _prev is None:
@@ -382,3 +392,26 @@ def analyze_sentiment(docs, config, windows_by_doc=None) -> Dict:
         "method": method,
         "model": model_name,
     }
+
+
+def llm_judge_sentiment(texts, base_url: str = "", model: str = ""):
+    """LLM-judge for borderline web tone (different family than generator, temp 0).
+
+    Uses Ollama when reachable; fail-open returning [] (transformer scores stand).
+    """
+    if not base_url:
+        return []
+    try:
+        import httpx
+        out = []
+        for tx in texts[:20]:
+            r = httpx.post(f"{base_url.rstrip('/')}/api/generate", json={
+                "model": model or LLM_JUDGE_MODEL,
+                "prompt": ("Classify web-content tone as positive/neutral/negative. "
+                           "Reply with one word. Text: " + tx[:1000]),
+                "stream": False, "options": {"temperature": 0}}, timeout=30)
+            lab = (r.json().get("response", "") or "").strip().lower()
+            out.append("positive" if "posit" in lab else ("negative" if "negat" in lab else "neutral"))
+        return out
+    except Exception:
+        return []

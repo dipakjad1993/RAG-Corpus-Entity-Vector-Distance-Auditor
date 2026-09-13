@@ -6,7 +6,11 @@ services:
     volumes:
       - ./web_output:/app/web_output
     environment:
+      # Runtime is offline ONLY because the image pre-caches models at build
+      # time (see Dockerfile). For a first build without cache, run once with
+      # HF_HUB_OFFLINE=0 + HF_TOKEN set, then switch back to 1.
       HF_HUB_OFFLINE: "1"
+      HF_TOKEN: "${HF_TOKEN:-}"
     restart: unless-stopped
 
   # Full stack: self-hosted search (higher-volume live harvesting).

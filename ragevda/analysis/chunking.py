@@ -40,58 +40,104 @@ logger = get_logger("ragevda.analysis.chunking")
 
 _TOKEN_RE = re.compile(r"\S+")
 
-# Lazy-loaded real tokenizer (from the cached embedding model so it is offline).
-_tokenizer_lock = threading.Lock()
-_TOKENIZER = None
+# Lazy-loaded real tokenizers, keyed by embedding-model family (offline only).
+_TOKENIZER_LOCK = threading.Lock()
+_tokenizer_lock = _TOKENIZER_LOCK  # legacy alias (older call sites / tests)
+_TOKENIZERS: Dict[str, object] = {}
+_TOKENIZER = None  # legacy single-slot alias (kept for backward compat)
+_TOKENIZER_FALLBACK_USED = False
+
+# Model-aware tokenizer resolution. The tokenizer MUST match the embedding
+# model family — a MiniLM tokenizer on BGE-M3/Qwen3 text silently miscounts
+# tokens and slices windows on wrong boundaries.
+MODEL_TOKENIZER_MAP = {
+    "nomic": "nomic-ai/nomic-embed-text-v1.5",
+    "bge-m3": "BAAI/bge-m3",
+    "bge-small": "BAAI/bge-small-en-v1.5",
+    "qwen3": "Qwen/Qwen3-Embedding-0.6B",
+    "minilm": "sentence-transformers/all-MiniLM-L6-v2",
+    "mpnet": "sentence-transformers/all-mpnet-base-v2",
+}
+
+_SENT_SPLIT_RE = re.compile(r"(?<=[.!?。！？])\s+|\n{2,}")
 
 
-def _get_tokenizer(require_real: bool = False):
-    """Load a real BPE tokenizer (from the cached MiniLM model) once.
+def resolve_tokenizer_name(embedding_model: str = "") -> str:
+    """Map an embedding-model id to the tokenizer checkpoint to load."""
+    low = (embedding_model or "").lower()
+    if "nomic" in low:
+        return MODEL_TOKENIZER_MAP["nomic"]
+    if "bge-m3" in low or "bge_m3" in low:
+        return MODEL_TOKENIZER_MAP["bge-m3"]
+    if "bge-small" in low or "bge_small" in low:
+        return MODEL_TOKENIZER_MAP["bge-small"]
+    if "qwen3" in low or "qwen" in low:
+        return MODEL_TOKENIZER_MAP["qwen3"]
+    if "mpnet" in low:
+        return MODEL_TOKENIZER_MAP["mpnet"]
+    return MODEL_TOKENIZER_MAP["minilm"]
 
+
+def _get_tokenizer(model_name: str = "", require_real: bool = False):
+    """Load a real BPE tokenizer matching the embedding model (cached per family).
+
+    Backwards-compatible: ``_get_tokenizer(require_real)`` and
+    ``_get_tokenizer(model_name, require_real)`` both work.
     When ``require_real=True`` and no locally-cached tokenizer can be loaded,
-    raises RuntimeError instead of silently falling back to char/4 math, so
-    reports can never be mistaken for real-BPE runs.
+    raises RuntimeError instead of silently falling back to char/4 math.
     """
-    global _TOKENIZER
+    global _TOKENIZER_FALLBACK_USED
+    # Back-compat: first positional arg may be a bool.
+    if isinstance(model_name, bool):
+        require_real = model_name
+        model_name = ""
+    want = resolve_tokenizer_name(model_name or "")
     with _tokenizer_lock:
-        if _TOKENIZER is not None:
-            if _TOKENIZER is False and require_real:
+        tok = _TOKENIZERS.get(want)
+        if tok is not None:
+            if tok is False and require_real:
                 raise RuntimeError(
                     "Real BPE tokenizer is required (require_real_models=True) "
-                    "but sentence-transformers/all-MiniLM-L6-v2 tokenizer is not "
-                    "locally cached. Pre-cache it or set require_real_models=False "
-                    "for triage-only char/4 estimates."
+                    f"but {want} tokenizer is not locally cached. Pre-cache it or "
+                    "set require_real_models=False for triage-only estimates."
                 )
-            return _TOKENIZER
+            return tok or None
         try:
             import os as _os
             from transformers import AutoTokenizer
             _prev = _os.environ.get("HF_HUB_OFFLINE")
             _os.environ["HF_HUB_OFFLINE"] = "1"
             try:
-                _TOKENIZER = AutoTokenizer.from_pretrained(
-                    "sentence-transformers/all-MiniLM-L6-v2", local_files_only=True)
+                tok = AutoTokenizer.from_pretrained(want, local_files_only=True)
             finally:
                 if _prev is None:
                     _os.environ.pop("HF_HUB_OFFLINE", None)
                 else:
                     _os.environ["HF_HUB_OFFLINE"] = _prev
+            _TOKENIZERS[want] = tok
+            return tok
         except Exception as exc:  # noqa: BLE001
             if require_real:
                 raise RuntimeError(
                     "Real BPE tokenizer is required (require_real_models=True) "
-                    f"but could not be loaded offline: {exc}"
+                    f"but could not be loaded offline ({want}): {exc}"
                 ) from exc
             logger.warning("real tokenizer unavailable (%s); using char/4 fallback", exc)
-            _TOKENIZER = False
-        return _TOKENIZER
+            _TOKENIZERS[want] = False
+            _TOKENIZER_FALLBACK_USED = True
+            return None
 
 
-def count_tokens(text: str) -> int:
-    """Real token count via a BPE tokenizer; char/4 fallback only if absent."""
+def tokenizer_is_fallback() -> bool:
+    """True if any char/4 fallback token estimate has been used this process."""
+    return _TOKENIZER_FALLBACK_USED
+
+
+def count_tokens(text: str, model_name: str = "") -> int:
+    """Real token count via the model-aware BPE tokenizer."""
     if not text:
         return 0
-    tok = _get_tokenizer()
+    tok = _get_tokenizer(model_name or "")
     if tok:
         try:
             return max(1, len(tok.encode(text, add_special_tokens=False)))
@@ -100,9 +146,9 @@ def count_tokens(text: str) -> int:
     return max(1, int(round(len(text) / 4.0)))
 
 
-def token_count_batch(texts: List[str]) -> List[int]:
+def token_count_batch(texts: List[str], model_name: str = "") -> List[int]:
     """Batch token counts for a list of strings (faster than one-by-one)."""
-    tok = _get_tokenizer()
+    tok = _get_tokenizer(model_name or "")
     if tok:
         try:
             # encode_batch is not universally available; loop is fine.
@@ -112,49 +158,115 @@ def token_count_batch(texts: List[str]) -> List[int]:
     return [max(1, int(round(len(t) / 4.0))) for t in texts]
 
 
-def token_windows(text: str, tokens: int = 512, overlap_tokens: int = 64) -> List[str]:
-    """Split text into overlapping RAG token-windows on real BPE boundaries."""
+def split_sentences(text: str) -> List[str]:
+    """Sentence-aware split that never breaks mid-sentence."""
+    text = (text or "").strip()
+    if not text:
+        return []
+    parts = _SENT_SPLIT_RE.split(text)
+    out: List[str] = []
+    for p in parts:
+        p = p.strip()
+        if not p:
+            continue
+        # Guard against pathological single "sentences" (e.g. minified HTML):
+        # hard-split only > 2000 chars on clause boundaries.
+        if len(p) > 2000:
+            for clause in re.split(r"(?<=[;,])\s+", p):
+                clause = clause.strip()
+                if clause:
+                    out.append(clause)
+        else:
+            out.append(p)
+    return out or [text]
+
+
+def token_windows(text: str, tokens: int = 512, overlap_tokens: int = 64,
+                  model_name: str = "") -> List[str]:
+    """Split text into overlapping RAG token-windows on real BPE boundaries.
+
+    SEMANTIC PACKING: sentences are packed greedily into each window so no
+    window ever starts/ends mid-sentence (fixes the char-split sentence
+    shredding). Overlap is applied in whole sentences. This is the SINGLE
+    canonical splitter — embeddings and density share these exact windows.
+    """
     text = text or ""
     if not text.strip():
         return []
-    tok = _get_tokenizer()
+    tok = _get_tokenizer(model_name or "")
+    sentences = split_sentences(text)
     if not tok:
-        # char/4 fallback path (deterministic, documented)
-        n = len(text)
-        step_chars = max(1, int((tokens - overlap_tokens) * 4.0))
+        # char/4 fallback path (deterministic, documented) — sentence-packed.
         win_chars = max(1, int(tokens * 4.0))
-        if n <= win_chars:
-            return [text]
+        step_chars = max(1, int((tokens - overlap_tokens) * 4.0))
         out: List[str] = []
-        start = 0
-        while start < n:
-            window = text[start:start + win_chars]
-            if count_tokens(window) >= 8:
-                out.append(window)
-            start += step_chars
-            if start + win_chars >= n:
-                break
-        return out
-    # real BPE path: tokenize the whole text once, then slice windows on token ids.
+        buf, buf_len = [], 0
+        for s in sentences:
+            buf.append(s)
+            buf_len += len(s) + 1
+            if buf_len >= win_chars:
+                piece = " ".join(buf)
+                if count_tokens(piece) >= 8:
+                    out.append(piece)
+                # overlap: keep trailing chars worth of whole sentences
+                keep, acc = [], 0
+                for b in reversed(buf):
+                    keep.append(b)
+                    acc += len(b) + 1
+                    if acc >= step_chars:
+                        break
+                buf = list(reversed(keep))
+                buf_len = sum(len(b) + 1 for b in buf)
+        if buf:
+            piece = " ".join(buf)
+            if piece and (not out or piece != out[-1]) and count_tokens(piece) >= 8:
+                out.append(piece)
+        return out or [text]
+    # real BPE path: pack whole sentences by token budget.
     try:
-        ids = tok.encode(text, add_special_tokens=False)
+        sent_ids = [tok.encode(s, add_special_tokens=False) for s in sentences]
     except Exception:  # noqa: BLE001
         return [text]
-    if not ids:
+    sent_ids = [list(s) for s in sent_ids if s]
+    if not sent_ids:
         return []
-    ids = list(ids)
     step = max(1, tokens - overlap_tokens)
     out: List[str] = []
     start = 0
-    n = len(ids)
+    n = len(sent_ids)
     while start < n:
-        window_ids = ids[start:start + tokens]
-        piece = tok.decode(window_ids, skip_special_tokens=True)
-        if count_tokens(piece) >= 8:
+        # grow end while token budget allows
+        used, end = 0, start
+        while end < n and used + len(sent_ids[end]) <= tokens:
+            used += len(sent_ids[end])
+            end += 1
+        if end == start:  # single long sentence exceeds window: hard-slice it
+            ids = sent_ids[start]
+            for off in range(0, len(ids), step):
+                piece = tok.decode(ids[off:off + tokens], skip_special_tokens=True)
+                if count_tokens(piece, model_name) >= 8:
+                    out.append(piece)
+                if off + tokens >= len(ids):
+                    break
+            start += 1
+            continue
+        flat: List[int] = []
+        for i in range(start, end):
+            flat.extend(sent_ids[i])
+        piece = tok.decode(flat, skip_special_tokens=True)
+        if count_tokens(piece, model_name) >= 8:
             out.append(piece)
-        start += step
-        if start + tokens >= n:
+        if end >= n:
             break
+        # overlap: walk back whole sentences covering overlap_tokens
+        back, acc = end - 1, 0
+        while back > start and acc < overlap_tokens:
+            acc += len(sent_ids[back])
+            back -= 1
+        new_start = max(start + 1, back)
+        if new_start >= end:
+            new_start = end
+        start = new_start
     return out
 
 
@@ -189,6 +301,7 @@ def build_chunk_windows(docs, topic_vecs, doc_topic_sim, config,
         config.all_entities(), config.entity_alias_map())
     tokens = max(64, config.chunk_tokens)
     overlap = max(0, min(config.chunk_overlap_tokens, tokens - 1))
+    emb_model = getattr(config, "embedding_model", "") or ""
 
     # Pre-compute the dominant topic per document so window labels are stable.
     for doc in docs:
@@ -196,10 +309,9 @@ def build_chunk_windows(docs, topic_vecs, doc_topic_sim, config,
         dom_topic = max(per_topic, key=per_topic.get) if per_topic else ""
         dom_sim = per_topic.get(dom_topic, 0.0)
 
-        chunks = token_windows(doc.text, tokens, overlap)
+        chunks = token_windows(doc.text, tokens, overlap, model_name=emb_model)
         for idx, text in enumerate(chunks):
-            tok = count_tokens(text)
-            low = text.lower()
+            tok = count_tokens(text, emb_model)
 
             # entity token counts within this window: sum the REAL token spans
             # of each mention (via the tokenizer), not a raw mention count.
@@ -270,7 +382,7 @@ def _focus_count_by_window(wins: List[ChunkWindow]) -> Dict[int, int]:
     return out
 
 
-def _mention_token_span(text, patterns, alias_to_entity, entity) -> int:
+def _mention_token_span(text, patterns, alias_to_entity, entity, model_name: str = "") -> int:
     """Real BPE token length of all spans matching ``entity``.
 
     Each verbatim matched mention is encoded with the real tokenizer and the
@@ -281,7 +393,7 @@ def _mention_token_span(text, patterns, alias_to_entity, entity) -> int:
     keys = [k for k, e in alias_to_entity.items() if e == entity]
     if not keys:
         return 0
-    tok = _get_tokenizer()
+    tok = _get_tokenizer(model_name or "")
     total = 0
     for k in keys:
         pat = patterns.get(k)

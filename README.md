@@ -1,10 +1,10 @@
-# 🔍 RAG-EVDA — RAG Corpus Entity & Vector Distance Auditor
+# RAG-EVDA — RAG Corpus Entity & Vector Distance Auditor
 
 ![CI](https://github.com/dipakjad1993/RAG-Corpus-Entity-Vector-Distance-Auditor/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 ![Local-only](https://img.shields.io/badge/LLM-100%25%20local-orange)
-![Version](https://img.shields.io/badge/version-1.3.0-black)
+![Version](https://img.shields.io/badge/version-2.0.0-black)
 
 > **A zero-cost, fully-local intelligence engine that decodes how modern AI search
 > engines (Gemini, SearchGPT, Google AI Overviews, Perplexity, Bing Copilot)
@@ -20,14 +20,72 @@ competitors — with **zero OpenAI / Ahrefs / Semrush / BrightEdge API keys** an
 
 | | | |
 |---|---|---|
-| 📄 **125 docs** audited in the reference Guardian run | 💰 **$0** API cost, forever | 📦 **22 output files** per run (JSON/CSV/HTML/PDF/DuckDB) |
+|  **125 docs** audited in the reference Guardian run |  **$0** API cost, forever |  **5-output contract** per run (JSON + HTML + DuckDB + brief + llms.txt/MCP) |
 
-### ✨ What's new in v1.3.0 — Enterprise experience release
+### What's new in v2.0.0 — Enterprise GEO release
+
+- **Live LLM Answer Harvester (P0)** — queries real answer surfaces
+  (`answer_harvester: brave | tavily | exa | multi`, `answer_repeats: 5–10`)
+  per prompt, parses citations + answer text into `source_type='answer'`
+  documents. Without this, no tool is a GEO tool.
+- **First-class UGC corpus** — `harvester/ugc.py` (Reddit search JSON,
+  YouTube transcripts, TikTok SERP) runs on every audit; earned media is
+  ~80–90% of AI answers, so invisibility no longer lies by ignoring it.
+- **Paid search primaries** — `harvester/paid_search.py` (Brave / Tavily / Exa,
+  keys via env). DDG HTML scraping is demoted to **fallback-only** and logged
+  as such. New `harvester: "multi"` fans out SearXNG + paid APIs → DDG.
+- **Modern embeddings default** — `nomic-ai/nomic-embed-text-v1.5` (137M,
+  CPU-fast, Apache-2.0, 8k ctx); BGE-M3 / Qwen3-Embedding-0.6B when cached;
+  MiniLM last-resort only. Model-aware tokenizers (no hardcoded MiniLM),
+  SQLite embedding cache keyed by `sha1(model+chunk)`.
+- **Hybrid retrieval** — `ragevda/nlp/hybrid.py`: BM25 + dense cosine (RRF
+  fusion) + `bge-reranker-v2-m3` cross-encoder rerank (fail-open). Cosine-only
+  retrieval is gone.
+- **Vector index** — `ragevda/nlp/vector_index.py` (FAISS `IndexFlatIP` when
+  installed, NumPy brute-force otherwise); engine authority scan fixed from
+  O(N²) to O(1); NER patterns built once and reused.
+- **Unified semantic chunking** — one sentence-aware BPE packer shared by
+  embeddings and density (`utils.chunk_text` delegates to
+  `token_windows`); the double-chunking bug (char 400/40 vs BPE 512/64
+  measuring different windows) is fixed. Silent `char/4` fallback now raises
+  under `require_real_models=True`.
+- **Prompt library + personas** — `ragevda/prompts.yaml` + `prompt_library.py`:
+  informational/transactional/comparison/local/qa frames × personas ×
+  geo-variants × `prompt_volume` repeats (forward-tracks real prompts, not
+  just reverse-engineered synthetic queries).
+- **llms.txt + MCP** — every run emits `llms.txt`, `llms-full.txt`,
+  `agent.json`, `.well-known/mcp.json` (get_pricing/check_stock,
+  Lighthouse-13.3-ready) from real report data.
+- **RAGAS-style eval gates** — `ragevda/eval/gates.py` (faithfulness ≥0.75,
+  answer relevancy ≥0.80, context precision/recall ≥0.70); `pytest --geo`
+  fails the build on gate failure.
+- **E-E-A-T factuality** — ghost-citation tracking (brand cited but unnamed)
+  + Information Gain scoring (depth/structured/data/stats/citations).
+- **GSC + GA4 attribution** — `ragevda/attribution.py` (Gen-AI impressions,
+  chatgpt/perplexity/claude channel split, SKU tracking); explicit
+  `configured: false` when unconfigured — never synthesised.
+- **Enterprise serving** — FastAPI async service (`ragevda/api.py`: `/health`,
+  `/jobs`, OpenAPI, OTEL hook), persistent SQLite job queue (no more
+  single-flight rejection, `RAGEVDA_WORKERS` pool), API-key auth, per-IP rate
+  limiting, CSRF double-submit, SSRF guard on every fetch, non-root Docker,
+  loopback bind by default. Flask UI split into `web_templates/` + `static/`.
+- **Config enterprise fields + Pydantic v2** — `config_schema.py` adapter with
+  junior-readable errors; 20+ new validated keys (answer/UGC/eval/attribution/
+  jobs/security). Drift adds ETS-lite forecast + Slack webhook alerts.
+- **Consolidated outputs** — `reporting/report_writer.py` 5-output contract
+  (`report.json`, `dashboard.html`, DuckDBs, `rag_content_brief.md`,
+  llms.txt patch); legacy CSVs archived under `_legacy/`.
+- **Build** — hatchling + `uv` (`uv sync`, `uv.lock`), `requirements.txt`
+  kept as a thin pip-compat shim; 48 tests incl. `--geo` gates.
+- **Stats fix** — `_two_tailed_p` corrected (was multiplying by √2π instead
+  of dividing; z=1.96 now yields p≈0.05, covered by test).
+
+### What's new in v1.3.0 — Enterprise experience release
 
 - **Enterprise 2026 web UI** — gradient hero with live detection stats, bento
   input grid for all 11 fields, clickable 3-step flow
   (Inputs → Deep Analysis → Outputs), sticky run bar with an explicit
-  **📊 Show Outputs** action, skeleton loaders, toasts, and percent/elapsed
+  ** Show Outputs** action, skeleton loaders, toasts, and percent/elapsed
   progress with color-coded live logs. Pixel-first type
   (`Google Sans` → bundled Roboto Flex) with a fully working dark/light toggle.
 - **Deep-research Auto-Detect** — paste any brand or URL and the tool performs
@@ -60,10 +118,10 @@ python -m ragevda.cli run -c examples/offline_demo/config.yaml
 
 ```mermaid
 flowchart LR
-    CFG[Config / CLI / Web UI] --> H[Harvester<br/>DDG · SearXNG · RSS · file]
-    H --> NLP[Embeddings + NER<br/>BGE/MiniLM · spaCy · graph]
-    NLP --> BRAIN[Analysis brain<br/>proximity · gaps · SoV · density · sentiment · drift]
-    BRAIN --> OUT[(DuckDB + CSV/JSON/HTML/PDF)]
+    CFG[Config / CLI / Web UI / FastAPI] --> H[Harvester<br/>multi: SearXNG · Brave/Tavily/Exa · UGC · answers<br/>DDG fallback-only · RSS · file]
+    H --> NLP[Embeddings + NER<br/>nomic / BGE-M3 / Qwen3 · hybrid BM25+rerank<br/>spaCy + GLiNER · FAISS index · embed cache]
+    NLP --> BRAIN[Analysis brain<br/>proximity · gaps · ghost cites · SoV · density · sentiment · drift+forecast · eval gates]
+    BRAIN --> OUT[(DuckDB + report.json + HTML + brief + llms.txt/MCP)]
 ```
 
 ### Why not a black-box visibility SaaS?
@@ -77,9 +135,9 @@ flowchart LR
 
 Every number in the reports is **real, verifiable, and enterprise-grade**:
 - real harvested documents with real URLs, content hashes, and fetch latencies
-- real sentence-transformer embeddings (BGE / MiniLM / MPNet)
-- real spaCy named-entity recognition
-- real Hugging-Face transformer sentiment (RoBERTa)
+- real sentence-transformer embeddings (nomic default; BGE-M3 / Qwen3 / MiniLM-fallback)
+- real spaCy named-entity recognition (multilingual + GLiNER ontology when available)
+- real transformer sentiment (multilingual web-tone model + LLM-judge)
 - real BPE token counting and per-window density math
 - real regression-trend and z-score drift detection from your own run history
 
@@ -90,10 +148,11 @@ guidelines, and the project's About + tags.**
 
 ---
 
-## 📚 Table of Contents
+## Table of Contents
 
 1. [Why it exists](#why-it-exists)
-2. [✨ What's new in v1.3.0](#-whats-new-in-v130--enterprise-experience-release)
+2. [ What's new in v2.0.0](#-whats-new-in-v200--enterprise-geo-release)
+2. [ What's new in v1.3.0](#-whats-new-in-v130--enterprise-experience-release)
 3. [What problem it solves](#what-problem-it-solves)
 3. [Architecture — four local micro-engines](#architecture--four-local-micro-engines)
 4. [Feature summary table](#feature-summary-table)
@@ -200,14 +259,15 @@ publication) to close the gap.
 
 | Layer | Module(s) | What it does |
 |-------|-----------|--------------|
-| **A. Zero-Cost Web Harvester** | `ragevda.harvester` | DuckDuckGo / SearXNG / RSS-feeds / SERP-footprints / local-file harvesting + `trafilatura` HTML clean-room parsing → clean text |
-| **B. Local Embedding & Semantic Mapping** | `ragevda.nlp.embedder` | `sentence-transformers` (BGE-small / MPNet / MiniLM) + cosine similarity; real-token BPE counting |
-| **C. Local NER & Knowledge Graph** | `ragevda.nlp.ner`, `ragevda.nlp.cooccurrence` | spaCy entity extraction + `networkx` co-occurrence graph |
-| **D. Analysis (the brain)** | `ragevda.analysis` | proximity, citation gap, invisibility index, share of voice, token density, sentiment, poisoning, drift, recommendations, synthetic queries, freshness, engine matrix |
+| **A. Zero-Cost Web Harvester** | `ragevda.harvester` | `multi` fan-out: SearXNG + Brave/Tavily/Exa APIs + first-class Reddit/YouTube/TikTok UGC + live LLM answer harvester; DDG HTML scrape fallback-only + `trafilatura` clean-room parsing → clean text |
+| **B. Local Embedding & Semantic Mapping** | `ragevda.nlp.embedder`, `ragevda.nlp.vector_index`, `ragevda.nlp.hybrid` | Modern defaults (nomic-embed-text-v1.5 → BGE-M3 → Qwen3 → MiniLM fallback-only) + cosine similarity; FAISS ANN index + SQLite embed cache; hybrid BM25 + dense + `bge-reranker-v2-m3` rerank; model-aware BPE counting |
+| **C. Local NER & Knowledge Graph** | `ragevda.nlp.ner`, `ragevda.nlp.cooccurrence` | spaCy entity extraction (`xx_ent_wiki_sm` multilingual fallback, GLiNER for product ontology when installed) + `networkx` co-occurrence graph |
+| **D. Analysis (the brain)** | `ragevda.analysis` | proximity, citation gap, ghost citations, information gain, invisibility index, share of voice, token density, sentiment (multilingual + LLM-judge), poisoning, drift + forecast, eval gates, recommendations, synthetic + library prompts, freshness (Cache-Control/sitemap/CDX), engine matrix |
 | **NLP augmentation** | `ragevda.nlp.llm` | optional local **Ollama** free-text rationale (never invents data) |
 | **Storage** | `ragevda.storage` | DuckDB local vector DB ($0 forever) + `drift_timeseries.duckdb` |
 | **Orchestration** | `ragevda.orchestrator`, `ragevda.cli`, `ragevda.scheduler` | pipeline runner, CLI, recurring audit scheduler |
-| **Reporting** | `ragevda.reporting` | CSV / JSON / self-contained HTML dashboard / narrative / PDF / RAG brief / JSON-LD patch |
+| **Serving** | `ragevda.webapp`, `ragevda.api`, `ragevda.jobs_store`, `ragevda.security` | Flask UI (split `web_templates/` + `static/`) + FastAPI async API with persistent SQLite job queue, API-key auth, rate limiting, CSRF, SSRF guard |
+| **Reporting** | `ragevda.reporting` | 5-output contract: `report.json` / HTML dashboard / DuckDBs / RAG brief + JSON-LD / `llms.txt` + `agent.json` + MCP manifest (legacy CSVs archived) |
 
 ---
 
@@ -216,7 +276,7 @@ publication) to close the gap.
 | # | Core feature | Real output it produces |
 |---|--------------|--------------------------|
 | 1 | Zero-cost multi-source harvesting | Documents with real URLs, hashes, latency, HTTP status, headers |
-| 2 | Local sentence-transformer embeddings | Semantic vector proximity scores (0–1) |
+| 2 | Local sentence-transformer embeddings (nomic default, BGE-M3/Qwen3 ready) + embed cache | Semantic vector proximity scores (0–1) |
 | 3 | Local spaCy NER + mention detection | Entity counts, citation gaps, co-occurrence |
 | 4 | RAG Invisibility Index | % of high-relevance articles where the brand is absent |
 | 5 | Vector Share of Voice matrix | Brand vs competitor % presence in the retrieval pool |
@@ -224,7 +284,7 @@ publication) to close the gap.
 | 7 | Prioritized recommendations | "Pitch Publication X — they cited Competitor A N times" |
 | 8 | Data-integrity / verification score | Honest 0–100 validation of provenance + models |
 | 9 | Real-time source freshness & liveness | Live %, median age, stale detection from real headers |
-| 10 | Real ML sentiment (RoBERTa transformers) | Per-entity net sentiment, negative risk windows |
+| 10 | Real ML sentiment (multilingual transformers + LLM-judge) | Per-entity net sentiment, negative risk windows |
 | 11 | Data-driven per-engine SoV | Emergent engine differences from real on-page features |
 | 12 | Real BPE token-density adjuster | Exact token counts + displacement plan per window |
 | 13 | Statistical drift detection | Trend slopes, z-scores, anomaly flags across runs |
@@ -234,7 +294,16 @@ publication) to close the gap.
 | 17 | Persistent DuckDB storage | Re-runnable, queryable local vector DB |
 | 18 | Recurring scheduled audits | Scheduled full audits writing normal reports |
 | 19 | Local-LLM gap analysis (Ollama) | Free-text rationale built only from real audited metrics |
-| 20 | Auto-fallback & resilience | SearXNG→DDG fallback, model fallback, never fake data |
+| 20 | Auto-fallback & resilience | Paid-API → SearXNG → DDG chain, real-model fallback, robots.txt + SSRF guard, never fake data |
+| 21 | Live LLM answer harvester | Real answer-engine citations + answer text per prompt (GEO) |
+| 22 | First-class UGC corpus | Reddit / YouTube transcripts / TikTok documents in every audit |
+| 23 | Hybrid retrieval | BM25 + dense RRF fusion + cross-encoder rerank |
+| 24 | Prompt library + personas | Forward-tracked real prompts (frames × personas × geo × volume) |
+| 25 | llms.txt + MCP | Agent-discoverability files from real report data |
+| 26 | RAGAS-style eval gates | Faithfulness / relevancy / precision / recall with build-failing thresholds |
+| 27 | Ghost citations + Information Gain | Unnamed brand citations + originality scoring |
+| 28 | GSC + GA4 attribution | Gen-AI impressions + AI-referral channel split |
+| 29 | Enterprise serving | FastAPI async API, persistent job queue, auth, rate-limit, CSRF, OTEL |
 
 ---
 
@@ -260,27 +329,33 @@ python -m venv .venv
 .venv\Scripts\activate          # Windows
 # source .venv/bin/activate     # Linux / macOS
 
-# 2. install dependencies
-pip install -r requirements.txt
+# 2. install dependencies (preferred: uv; pip shim also works)
+uv sync
+# ...or: pip install -r requirements.txt
 
 # 3. download the default spaCy NER model
 python -m spacy download en_core_web_sm
 
 # 4. (optional but recommended) pre-cache the default embedding + sentiment
-#    models so the tool never needs the network at audit time
-python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
-python -c "from transformers import AutoTokenizer, AutoModelForSequenceClassification; AutoTokenizer.from_pretrained('cardiffnlp/twitter-roberta-base-sentiment-latest'); AutoModelForSequenceClassification.from_pretrained('cardiffnlp/twitter-roberta-base-sentiment-latest')"
+# models so the tool never needs the network at audit time
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('nomic-ai/nomic-embed-text-v1.5')"
+python -c "from transformers import AutoTokenizer, AutoModelForSequenceClassification; AutoTokenizer.from_pretrained('tabularisai/multilingual-sentiment-analysis'); AutoModelForSequenceClassification.from_pretrained('tabularisai/multilingual-sentiment-analysis')"
 
 # 5. verify
-python -m ragevda.cli --version   # → ragevda 1.3.0
+python -m ragevda.cli --version   # → ragevda 2.0.0
+
+# 6. run the quality gates (unit + enterprise GEO gates)
+python -m pytest tests/ --geo -q  # → 48 passed
 ```
 
 > **Resilience guarantee.** If you request an embedding or NER model that is not
 > cached/installed locally, RAG-EVDA automatically falls back to the best
-> **real, locally-available** model (e.g. `bge-large` → cached `BAAI/bge-small`;
-> `en_core_web_trf` → installed `en_core_web_sm`) instead of crashing. It never
-> silently degrades to synthetic numbers when you asked for real models — it
-> fails loudly and honestly only if *no* real model exists at all.
+> **real, locally-available** model (e.g. `Qwen3` → cached `nomic`; requested
+> `en_core_web_trf` → installed `xx_ent_wiki_sm` / `en_core_web_sm`) instead of
+> crashing. The TF-IDF/hashing fallback is **explicit opt-in only**
+> (`RAGEVDA_ALLOW_FALLBACK=1`) — it never silently degrades to synthetic
+> numbers when you asked for real models; the run fails loudly and honestly
+> if *no* real model exists at all.
 
 ---
 
@@ -319,17 +394,17 @@ python -m ragevda.cli web --port 9000
 The web UI runs a 3-step flow — **Inputs → Deep Analysis → Outputs**:
 
 - **Step 1 · Inputs.** Paste a brand **or any website URL** and hit
-  **🔍 Auto-Detect Deep Research**: the tool fetches the live site, scans
+  ** Auto-Detect Deep Research**: the tool fetches the live site, scans
   discovery endpoints, runs budgeted live searches, and pre-fills **all 11
   configuration inputs** (topics, competitors, crawl depth, locality, intent +
   query templates, entity weighting/ontology, ground-truth paths, embedding
   model, SERP footprints, content feeds) with verified real-time data.
-- **Step 2 · Deep Analysis.** **▶ Run Full Audit** executes all 10
+- **Step 2 · Deep Analysis.** ** Run Full Audit** executes all 10
   micro-engines with live progress, then opens the in-depth analysis: a global
   **Issues requiring attention** summary (CRITICAL / HIGH RISK / WATCH /
   STRENGTH), methodology + verification, and every engine's full computed
   detail with problem rows highlighted in red/amber/green.
-- **Step 3 · Outputs.** **📊 Show Outputs** compiles the 12-section verified
+- **Step 3 · Outputs.** ** Show Outputs** compiles the 12-section verified
   report (KPIs, leaderboard, full tables, downloads).
 
 The web UI exposes **11 configuration inputs** on one form:
@@ -349,6 +424,24 @@ The web UI exposes **11 configuration inputs** on one form:
 (plus optional `query_templates`). Each run writes a full report into
 `web_output/jobs/<timestamp>-<hash>/` and appears in **History & Trends**.
 
+Jobs queue persistently (SQLite) with a bounded worker pool
+(`RAGEVDA_WORKERS`, default 2) — no more single-flight rejection. When
+`RAGEVDA_API_KEY` (or `api_key`) is set, `/run` requires `X-API-Key` +
+CSRF token and is per-IP rate-limited; every outbound fetch passes an SSRF
+guard (no private/loopback hosts, validated redirect chain, optional
+`fetch_allowlist`) and `robots.txt` is enforced.
+
+### Enterprise API (FastAPI)
+
+```bash
+uvicorn ragevda.api:app --host 127.0.0.1 --port 9000
+# GET  /health               → {"ok": true, "version": "2.0.0"}
+# POST /jobs                 → {"job_id": ...}  (X-API-Key header)
+# GET  /jobs/{id}            → status/progress/logs
+# GET  /jobs/{id}/report     → full report.json
+# OpenAPI docs at /docs; OTEL tracing when OTEL_EXPORTER_OTLP_ENDPOINT is set
+```
+
 ### Python API
 
 ```python
@@ -360,12 +453,14 @@ cfg = RunConfig(
     industry_topics=["your main industry topic", "secondary topic"],
     competitor_entities=["CompetitorA", "CompetitorB"],
     crawl_depth=50,
-    harvester="duckduckgo",
+    harvester="multi",               # multi | searxng | duckduckgo (fallback-only) | file
+    answer_harvester="off",          # brave | tavily | exa | multi (needs API keys)
     require_real_models=True,          # never emit fake/degraded numbers
     output_dir="./ragevda_output",
 )
 report = run(cfg)
 # report["proximity"], report["invisibility"], report["advanced"], ...
+# report["advanced"]["eval"] → RAGAS-style gates; llms.txt/MCP written to output_dir
 ```
 
 ---
@@ -376,9 +471,9 @@ report = run(cfg)
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `target_brand` | `str` | ✅ | The exact brand / site name to audit. |
-| `industry_topics` | `List[str]` | ✅ (≥1) | High-value contextual topics / seed concepts (no limit). Each is embedded as a concept and compared. |
-| `competitor_entities` | `List[str]` | ✅ (≥1) | Direct competitor brand names (no limit). |
+| `target_brand` | `str` |  | The exact brand / site name to audit. |
+| `industry_topics` | `List[str]` |  (≥1) | High-value contextual topics / seed concepts (no limit). Each is embedded as a concept and compared. |
+| `competitor_entities` | `List[str]` |  (≥1) | Direct competitor brand names (no limit). |
 | `crawl_depth` | `int` (1–200) | | Results/pages scraped per query. Hard-capped at 200. |
 | `locality` | `str \| None` | | Region / country code (e.g. `US`, `UK`, `Detroit`). `null` = global. |
 | `harvester` | `str` | | `duckduckgo` (default) \| `searxng` \| `file`. |
@@ -761,7 +856,7 @@ this topic despite the highest raw support-mention count (159) — exactly the
 `source_freshness.csv`, `sources.csv`, `synthetic_retrieval_queries.csv`,
 `token_density_adjuster.csv`, `verification.csv`.
 
-> ✅ **This is real data, not a demo.** The URLs are live pages, the hashes and
+>  **This is real data, not a demo.** The URLs are live pages, the hashes and
 > latencies came from real HTTP responses, the entities were counted by real
 > spaCy NER, and the sentiment by a real transformer. RAG-EVDA's verification
 > layer reports the run's confidence honestly (here `verified: false` / 72 due
@@ -1050,7 +1145,7 @@ contributions welcome per [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 **Dipak Jadhav** ([@dipakjad1993](https://github.com/dipakjad1993)) — Applied AI
 engineer building cost-aware, fully-local LLM systems. Open to Applied LLM /
-MLOps / MarTech-SEO roles. Star ⭐ the repo if auditable AI visibility matters
+MLOps / MarTech-SEO roles. Star  the repo if auditable AI visibility matters
 to you.
 
 ---

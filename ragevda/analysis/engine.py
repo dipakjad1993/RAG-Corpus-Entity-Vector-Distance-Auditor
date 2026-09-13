@@ -76,7 +76,8 @@ ENGINE_PROFILES = {
 }
 
 
-def _feature_vector(ctx, doc_id: str, topic: str) -> Dict[str, float]:
+def _feature_vector(ctx, doc_id: str, topic: str,
+                    _patterns=None, _alias=None, _domain_counts=None) -> Dict[str, float]:
     """Measure the real retrieval features of a document from live data."""
     cfg = ctx.config
     c = ctx.doc_by_id.get(doc_id)
@@ -86,14 +87,15 @@ def _feature_vector(ctx, doc_id: str, topic: str) -> Dict[str, float]:
     text = c.text or ""
     low_title = (c.title or "").lower()
 
-    # authority: how many corpus documents reference this domain (real links)
+    # authority: precomputed domain co-citation counts (O(1) lookup, not O(N²)).
+    if _domain_counts is None:
+        _domain_counts = getattr(ctx, "_domain_counts", None)
+        if _domain_counts is None:
+            from collections import Counter as _C
+            _domain_counts = _C(d.domain for d in ctx.docs if d.domain)
+            ctx._domain_counts = _domain_counts  # type: ignore[attr-defined]
     domain = c.domain
-    authority = 0.0
-    total_docs = max(1, len(ctx.docs))
-    for d in ctx.docs:
-        if d.domain and d.domain == domain and d.doc_id != doc_id:
-            authority += 1.0
-    authority = min(1.0, authority / total_docs)
+    authority = min(1.0, max(0.0, (_domain_counts.get(domain, 1) - 1)) / max(1, len(ctx.docs)))
 
     # recency: 1.0 now, decaying with age of the fetch (real extracted_at).
     recency = 0.5
@@ -114,10 +116,13 @@ def _feature_vector(ctx, doc_id: str, topic: str) -> Dict[str, float]:
     title_directness = 1.0 if (topic_low and topic_low in low_title) else 0.0
 
     # entity_richness: real NER entity count per 1000 tokens in text.
+    # Patterns built ONCE per analyze_engine_matrix call and passed in
+    # (no per-document rebuild).
     from ..nlp.ner import NER
-    patterns, alias_to_entity = NER.build_mention_patterns(
-        cfg.all_entities(), cfg.entity_alias_map())
-    counts = NER.find_mentions(text, patterns, alias_to_entity)
+    if _patterns is None or _alias is None:
+        _patterns, _alias = NER.build_mention_patterns(
+            cfg.all_entities(), cfg.entity_alias_map())
+    counts = NER.find_mentions(text, _patterns, _alias)
     mentions = sum(counts.values())
     tokens = max(1, len(text) / 4.0)
     entity_richness = min(1.0, mentions / max(1.0, tokens / 1000.0) / 8.0)
@@ -127,9 +132,10 @@ def _feature_vector(ctx, doc_id: str, topic: str) -> Dict[str, float]:
             "entity_richness": entity_richness}
 
 
-def engine_retrieval_score(ctx, doc_id: str, topic: str, profile: Dict[str, float]) -> float:
+def engine_retrieval_score(ctx, doc_id: str, topic: str, profile: Dict[str, float],
+                           _patterns=None, _alias=None, _domain_counts=None) -> float:
     """Real retrieval propensity of a document under an engine's profile."""
-    feats = _feature_vector(ctx, doc_id, topic)
+    feats = _feature_vector(ctx, doc_id, topic, _patterns, _alias, _domain_counts)
     score = 0.0
     for key, w in profile.items():
         score += w * (feats.get(key, 0.0) if key in feats else 0.0)
@@ -149,6 +155,11 @@ def analyze_engine_matrix(ctx, citation_result, invisibility_result) -> Dict:
 
     citations = citation_result.get("citations", [])
     thresholds = ctx.topic_thresholds or {}
+    from ..nlp.ner import NER as _NER2
+    _patterns, _alias = _NER2.build_mention_patterns(
+        cfg.all_entities(), cfg.entity_alias_map())
+    from collections import Counter as _Counter2
+    _domain_counts = _Counter2(d.domain for d in ctx.docs if d.domain)
 
     # Per-topic high-relevance docs (real cosine similarity vs threshold).
     topic_docs: Dict[str, List[Dict]] = defaultdict(list)
@@ -182,7 +193,8 @@ def analyze_engine_matrix(ctx, citation_result, invisibility_result) -> Dict:
             pool = 0
             # score is a real retrieval propensity; a doc joins the engine's
             # realised pool when its score clears the median of all docs here.
-            scores = [engine_retrieval_score(ctx, d["doc_id"], topic, profile)
+            scores = [engine_retrieval_score(ctx, d["doc_id"], topic, profile,
+                                               _patterns, _alias, _domain_counts)
                       for d in docs]
             median_score = 0.0
             if scores:
@@ -230,8 +242,12 @@ def analyze_engine_matrix(ctx, citation_result, invisibility_result) -> Dict:
         "engine_composite": engine_composite,
         "engines": engines,
         "topics": cfg.industry_topics,
-        "method": ("per-engine SoV from real on-page features (authority, "
-                   "recency, verbosity, title-directness, entity-richness) "
-                   "measured live from the corpus; engine differentiation is "
-                   "emergent, not a fixed affinity table."),
+        "verified": False,
+        "estimate": True,
+        "live_observed": False,
+        "method": ("HEURISTIC ESTIMATE — per-engine SoV from real on-page features "
+                   "(authority, recency, verbosity, title-directness, "
+                   "entity-richness) measured live from the corpus; engine "
+                   "differentiation is emergent, not a fixed affinity table. "
+                   "Do NOT quote as observed engine telemetry."),
     }

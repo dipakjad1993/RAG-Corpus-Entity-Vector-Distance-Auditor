@@ -954,7 +954,7 @@ def drift_tracking(data: Dict, job_id: str) -> str:
             _pct(t.get("sov_delta")),
             "Yes" if t.get("has_prior") else "No (first run)",
             _num(t.get("data_points", 0)),
-            "⚠ YES" if t.get("anomaly") else "No",
+            " YES" if t.get("anomaly") else "No",
         ])
 
     alert_table = [["Topic", "Metric", "Alert"]]
@@ -1022,14 +1022,14 @@ def drift_tracking(data: Dict, job_id: str) -> str:
         drift_detail += f"""
     <div class="card" style="margin:14px 0;border-color:var(--m3-error)">
       <h3 style="margin:0 0 10px;font-size:16px;font-weight:700;color:var(--m3-error)">
-        ⚠ Drift Alerts ({_num(len(alerts))})</h3>
+         Drift Alerts ({_num(len(alerts))})</h3>
       {_t(alert_table, row_classes=["row-high"] * len(alerts))}
     </div>"""
     else:
         drift_detail += """
     <div class="card" style="margin:14px 0;border-color:var(--m3-tertiary)">
       <h3 style="margin:0 0 10px;font-size:16px;font-weight:700;color:var(--m3-tertiary)">
-        ✓ No Drift Alerts</h3>
+         No Drift Alerts</h3>
       <p style="font-size:13px;color:var(--m3-on-surface-variant)">
         No anomalous metric changes were detected. All metrics are within expected
         historical ranges. Run the audit again later to build time-series data
@@ -1227,7 +1227,7 @@ def sentiment_audit(data: Dict, job_id: str) -> str:
         sent_detail += f"""
     <div class="card" style="margin:14px 0;border-color:var(--m3-error)">
       <h3 style="margin:0 0 10px;font-size:16px;font-weight:700;color:var(--m3-error)">
-        ⚠ Risk Windows ({_num(len(risk_windows))} negative-framed mentions)</h3>
+         Risk Windows ({_num(len(risk_windows))} negative-framed mentions)</h3>
       <p style="font-size:12px;color:var(--m3-on-surface-variant);margin:0 0 8px">
         These retrieval windows contain entity mentions with negative sentiment
         context. If an LLM retrieves these chunks, it will propagate the negative
@@ -1238,7 +1238,7 @@ def sentiment_audit(data: Dict, job_id: str) -> str:
         sent_detail += """
     <div class="card" style="margin:14px 0;border-color:var(--m3-tertiary)">
       <h3 style="margin:0 0 10px;font-size:16px;font-weight:700;color:var(--m3-tertiary)">
-        ✓ No Risk Windows Detected</h3>
+         No Risk Windows Detected</h3>
       <p style="font-size:13px;color:var(--m3-on-surface-variant)">
         No retrieval windows with negative sentiment framing toward any tracked
         entity were found. This may indicate the brand has minimal corpus presence

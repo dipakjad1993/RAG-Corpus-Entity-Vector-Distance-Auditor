@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>RAG-EVDA — AI Search Visibility Auditor</title>
+<style>__M3_STYLE__</style>
+<link rel="stylesheet" href="/static/app.css"/>
+</head>
+<body>
+<header class="topbar"><h1>RAG-EVDA</h1><p>Enterprise AI-search visibility audit (local, verified)</p></header>
+<main class="wrap">
+  <section class="card">
+    <h2>1 · Target</h2>
+    <form id="audit-form">
+      <label>Brand <input name="target_brand" required placeholder="e.g. Acme Corp"/></label>
+      <label>Industry topics (comma separated) <input name="industry_topics" required placeholder="topic one, topic two"/></label>
+      <label>Competitors (comma separated) <input name="competitor_entities" required placeholder="Rival A, Rival B"/></label>
+      <label>Crawl depth <input name="crawl_depth" value="20"/></label>
+      <label>Harvester
+        <select name="harvester">
+          <option value="multi">multi (SearXNG + Brave/Tavily/Exa, recommended)</option>
+          <option value="searxng">searxng</option>
+          <option value="duckduckgo">duckduckgo (fallback only)</option>
+          <option value="file">file</option>
+        </select>
+      </label>
+      <label>Answer harvester
+        <select name="answer_harvester">
+          <option value="off">off</option><option value="multi">multi</option>
+          <option value="tavily">tavily</option><option value="exa">exa</option><option value="brave">brave</option>
+        </select>
+      </label>
+      <button type="submit">Run audit</button>
+    </form>
+  </section>
+  <section class="card">
+    <h2>2 · Progress</h2>
+    <div id="job">No job yet.</div>
+    <div class="bar"><div id="bar" style="width:0%"></div></div>
+    <pre id="logs"></pre>
+  </section>
+  <section class="card">
+    <h2>3 · Outputs (consolidated)</h2>
+    <p>report.json (machine) · dashboard.html (human) · corpus.duckdb + drift_timeseries.duckdb (analyst) · rag_content_brief.md · llms.txt patch (action).</p>
+    <div id="outputs"></div>
+  </section>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

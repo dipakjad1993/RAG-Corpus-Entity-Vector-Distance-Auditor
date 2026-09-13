@@ -523,7 +523,7 @@ def outputs_html(data: Dict[str, Any], job_id: str) -> str:
                   key=lambda x: -x[1])[:12]
     lead_rows = "".join(
         f"<tr><td>{_esc(e)}</td><td>{_round(m)}</td><td>{_num(n)} topics</td>"
-        f"<td>{'👑 brand' if e.lower()==str(cfg.get('target_brand','')).lower() else 'rival'}</td></tr>"
+        f"<td>{' brand' if e.lower()==str(cfg.get('target_brand','')).lower() else 'rival'}</td></tr>"
         for e, m, n in lead) or "<tr><td colspan='4' class='muted'>—</td></tr>"
 
     # ---- Entity citation ledger (linked / unlinked / omitted) -----------
@@ -607,23 +607,23 @@ def outputs_html(data: Dict[str, Any], job_id: str) -> str:
 
     downloads = f"""
     <div class="dl-row">
-      <a class="dl" href="/files/{job_id}/report.pdf" target="_blank">⬇ Enterprise PDF Report</a>
-      <a class="dl" href="/files/{job_id}/dashboard.html" target="_blank">⬇ Full Dashboard (HTML)</a>
-      <a class="dl" href="/files/{job_id}/report.json" download>⬇ report.json</a>
-      <a class="dl" href="/files/{job_id}/proximity_scores.csv" download>⬇ proximity_scores.csv</a>
-      <a class="dl" href="/files/{job_id}/entity_citation_summary.csv" download>⬇ citations.csv</a>
-      <a class="dl" href="/files/{job_id}/off_page_targets.csv" download>⬇ off_page_targets.csv</a>
-      <a class="dl" href="/files/{job_id}/recommendations.csv" download>⬇ recommendations.csv</a>
+      <a class="dl" href="/files/{job_id}/report.pdf" target="_blank"> Enterprise PDF Report</a>
+      <a class="dl" href="/files/{job_id}/dashboard.html" target="_blank"> Full Dashboard (HTML)</a>
+      <a class="dl" href="/files/{job_id}/report.json" download> report.json</a>
+      <a class="dl" href="/files/{job_id}/proximity_scores.csv" download> proximity_scores.csv</a>
+      <a class="dl" href="/files/{job_id}/entity_citation_summary.csv" download> citations.csv</a>
+      <a class="dl" href="/files/{job_id}/off_page_targets.csv" download> off_page_targets.csv</a>
+      <a class="dl" href="/files/{job_id}/recommendations.csv" download> recommendations.csv</a>
     </div>
     <div class="dl-row">
-      <a class="dl" href="/files/{job_id}/share_of_voice_heatmap.csv" download>⬇ SoV heatmap.csv</a>
-      <a class="dl" href="/files/{job_id}/token_density_adjuster.csv" download>⬇ token_density.csv</a>
-      <a class="dl" href="/files/{job_id}/sentiment_audit.csv" download>⬇ sentiment.csv</a>
-      <a class="dl" href="/files/{job_id}/poisoning_sources.csv" download>⬇ poisoning.csv</a>
-      <a class="dl" href="/files/{job_id}/semantic_drift.csv" download>⬇ semantic_drift.csv</a>
-      <a class="dl" href="/files/{job_id}/synthetic_retrieval_queries.csv" download>⬇ synthetic_queries.csv</a>
-      <a class="dl" href="/files/{job_id}/rag_content_brief.md" download>⬇ RAG Brief (MD)</a>
-      <a class="dl" href="/files/{job_id}/schema_jsonld_patch.json" download>⬇ JSON-LD Patch</a>
+      <a class="dl" href="/files/{job_id}/share_of_voice_heatmap.csv" download> SoV heatmap.csv</a>
+      <a class="dl" href="/files/{job_id}/token_density_adjuster.csv" download> token_density.csv</a>
+      <a class="dl" href="/files/{job_id}/sentiment_audit.csv" download> sentiment.csv</a>
+      <a class="dl" href="/files/{job_id}/poisoning_sources.csv" download> poisoning.csv</a>
+      <a class="dl" href="/files/{job_id}/semantic_drift.csv" download> semantic_drift.csv</a>
+      <a class="dl" href="/files/{job_id}/synthetic_retrieval_queries.csv" download> synthetic_queries.csv</a>
+      <a class="dl" href="/files/{job_id}/rag_content_brief.md" download> RAG Brief (MD)</a>
+      <a class="dl" href="/files/{job_id}/schema_jsonld_patch.json" download> JSON-LD Patch</a>
     </div>"""
 
     return f"""

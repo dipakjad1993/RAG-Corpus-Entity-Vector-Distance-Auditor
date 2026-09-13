@@ -64,12 +64,13 @@ def _probe_searxng(config) -> Optional[str]:
 
 
 def _harvest_or_fallback(config, queries, depth) -> tuple:
-    """Run the configured (live) harvester, auto-falling back to DuckDuckGo.
+    """Run the configured live harvester with enterprise fallback chain.
 
-    Never returns an all-zero run silently: if the primary SearXNG instance is
-    unreachable, or reaches a reachable instance that yields nothing, we drop
-    to DuckDuckGo (and, that failing, ``file``-mode corpus files/feeds).  Returns
-    ``(docs, stats, note)`` where ``note`` describes the fallback path taken.
+    Priority (2026): ``multi`` (SearXNG + Brave/Tavily/Exa fan-out) ->
+    SearXNG (self-hosted) -> Brave/Tavily/Exa APIs -> DuckDuckGo HTML scrape
+    (FALLBACK ONLY: fragile, legally grey, zero Reddit/YouTube depth) ->
+    file corpus. Never returns an all-zero run silently.
+    Returns ``(docs, stats, note)``.
     """
     kind = getattr(config, "harvester", "duckduckgo")
     note: Optional[str] = None
@@ -85,29 +86,56 @@ def _harvest_or_fallback(config, queries, depth) -> tuple:
     if kind == "file":
         return _run_harvester(FileHarvester)
 
-    if kind == "searxng":
-        reachable = _probe_searxng(config)
-        if not reachable:
-            note = (
-                "SearXNG unreachable; fell back to DuckDuckGo. "
-                "Check searxng_base_url connectivity."
-            )
-            logger.warning(note)
-            docs, stats, _ = _run_harvester(DuckDuckGoHarvester)
-            return docs, stats, note
-        docs, stats, _ = _run_harvester(SearXNGHarvester)
-        # Reachable but yielded no pages -> still fall back rather than emit an
-        # empty report based on a live-but-empty SERP.
-        if not docs:
-            note = "SearXNG reachable but returned 0 documents; fell back to DuckDuckGo."
-            logger.warning(note)
-            fallback_docs, fallback_stats, _ = _run_harvester(DuckDuckGoHarvester)
-            for k, v in fallback_stats.items():
-                stats[k] = stats.get(k, 0) + v
-            return (docs + fallback_docs), stats, note
-        return docs, stats, note
+    if kind in ("multi", "answers"):
+        # Paid-API fan-out first (Brave/Tavily/Exa), then SearXNG, then DDG.
+        from .harvester.paid_search import multi_search
+        from .harvester.base import new_document
+        from .harvester.cleaner import clean_html
+        paid = multi_search(queries[0] if queries else "", config, depth) if queries else []
+        docs = []
+        if paid:
+            from .utils import HttpClient
+            c = HttpClient(timeout=config.request_timeout,
+                           user_agent=config.user_agent, proxy=config.proxy,
+                           allowlist=getattr(config, "fetch_allowlist", None) or None)
+            try:
+                for url, title, snippet in paid[:depth]:
+                    try:
+                        from .harvester.base import robots_allowed
+                        if not robots_allowed(url, config.user_agent):
+                            continue
+                        r = c.get(url)
+                        if r.status_code != 200:
+                            continue
+                        text = clean_html(r.text) if hasattr(clean_html, "__call__") else snippet
+                        docs.append(new_document(url, title or url, "web",
+                                                 queries[0] if queries else "",
+                                                 text=text or snippet,
+                                                 final_url=str(r.url),
+                                                 http_status=r.status_code))
+                    except Exception:  # noqa: BLE001
+                        continue
+            finally:
+                c.close()
+            if docs:
+                return docs, {"paid_api_docs": len(docs)}, "primary: Brave/Tavily/Exa APIs"
+        # fall through to searxng -> DDG when paid APIs yield nothing
 
-    # default: duckduckgo (or unknown -> duckduckgo)
+    if kind in ("searxng", "multi", "answers"):
+        reachable = _probe_searxng(config) if getattr(config, "searxng_base_url", "") else None
+        if reachable:
+            docs, stats, _ = _run_harvester(SearXNGHarvester)
+            if docs:
+                return docs, stats, None
+            note = "SearXNG reachable but returned 0 documents; trying paid APIs then DDG fallback."
+            logger.warning(note)
+        elif getattr(config, "searxng_base_url", ""):
+            note = "SearXNG unreachable; trying paid APIs then DDG fallback."
+            logger.warning(note)
+
+    # default: duckduckgo FALLBACK ONLY (kept for offline/zero-key boxes).
+    logger.warning("DDG HTML scrape is FALLBACK-ONLY (fragile/TOS-grey, no UGC depth). "
+                   "Configure SearXNG or BRAVE/TAVILY/EXA keys for primary coverage.")
     return _run_harvester(DuckDuckGoHarvester)
 
 
@@ -135,28 +163,56 @@ def _serialize_recs(recs) -> List[Dict]:
     ]
 
 
+def _shingles(text: str, k: int = 5) -> set:
+    toks = [t for t in text.lower().split() if t]
+    if len(toks) < k:
+        return {" ".join(toks)} if toks else set()
+    return {" ".join(toks[i:i + k]) for i in range(len(toks) - k + 1)}
+
+
 def _dedupe(docs: List, config) -> "tuple[List, int]":
     """Drop exact + near-duplicate harvested documents so metrics are not
     inflated by the same article served from multiple URLs. Returns the
     de-duplicated list and the number of documents removed.
 
     Exact duplicates: identical body text (sha1). Near duplicates: same domain
-    AND same normalized title (covers syndicated/mirrored pages).
+    AND same normalized title (syndicated mirrors) OR shingle-Jaccard >=
+    ``near_dup_threshold`` (default 0.95) on body text.
     """
     if not config.dedupe_near:
         return docs, 0
+    threshold = float(getattr(config, "near_dup_threshold", 0.95) or 0.95)
     seen_text: set = set()
     seen_title_domain: set = set()
+    kept_shingles: List[set] = []
     uniq: List = []
     removed = 0
     for d in docs:
-        text_h = hashlib.sha1(d.text.strip().encode("utf-8", "ignore")).hexdigest()
-        title_key = (d.domain or "").lower() + "|" + d.title.strip().lower()
+        body = (d.text or "").strip()
+        text_h = hashlib.sha1(body.encode("utf-8", "ignore")).hexdigest()
+        title_key = (d.domain or "").lower() + "|" + (d.title or "").strip().lower()
         if text_h in seen_text or title_key in seen_title_domain:
             removed += 1
             continue
+        sh = _shingles(body)
+        is_near = False
+        if sh:
+            for prev in kept_shingles:
+                if not prev or not sh:
+                    continue
+                inter = len(sh & prev)
+                union = len(sh | prev)
+                jacc = inter / union if union else 0.0
+                if jacc >= threshold:
+                    is_near = True
+                    break
+        if is_near:
+            removed += 1
+            logger.info("near-duplicate dropped (jaccard>=%.2f): %s", threshold, d.url)
+            continue
         seen_text.add(text_h)
         seen_title_domain.add(title_key)
+        kept_shingles.append(sh)
         uniq.append(d)
     return uniq, removed
 
@@ -213,6 +269,31 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
             extra = augmenter.harvest(config.search_queries(), config.crawl_depth)
         finally:
             augmenter.close()
+        # P0: first-class UGC (Reddit / YouTube / TikTok) — earned media is
+        # 80-90% of AI answers; skipping it makes invisibility lie.
+        try:
+            from .harvester.ugc import harvest_reddit, harvest_youtube, harvest_tiktok
+            ugc_q = config.search_queries()[:20]
+            ugc = (harvest_reddit(ugc_q, config) + harvest_youtube(ugc_q, config)
+                   + harvest_tiktok(ugc_q, config))
+            if ugc:
+                extra = (extra or []) + ugc
+                harvest_stats["ugc_docs"] = len(ugc)
+                logger.info("UGC corpus: +%d reddit/youtube/tiktok doc(s)", len(ugc))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("UGC harvest skipped: %s", exc)
+        # P0: Live LLM Answer Harvester (forward-track real prompts x personas).
+        try:
+            from .prompt_library import build_prompts
+            from .harvester.answers import harvest_answers
+            prompts = build_prompts(config)
+            if prompts and getattr(config, "answer_harvester", "off") != "off":
+                ans = harvest_answers(prompts, config)
+                if ans:
+                    extra = (extra or []) + ans
+                    harvest_stats["answer_docs"] = len(ans)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("answer harvest skipped: %s", exc)
         # Ground-truth corpora (own brand / whitepaper docs) via local files,
         # unless the primary harvester is already "file" (which ingests them).
         if config.harvester != "file" and (config.corpus_files or config.corpus_dir):
@@ -428,6 +509,19 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
     write_dashboard(html_path, report)
     write_rag_brief(os.path.join(out_dir, "rag_content_brief.md"), report)
     write_jsonld(os.path.join(out_dir, "schema_jsonld_patch.json"), report)
+    # Consolidated enterprise outputs: llms.txt + agent.json + MCP manifest.
+    try:
+        from .reporting.llms import write_llms_outputs
+        write_llms_outputs(out_dir, report, config)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("llms.txt/MCP outputs skipped: %s", exc)
+    # Eval gates (RAGAS-style): fail-loud scores inside report["advanced"]["eval"].
+    try:
+        from .eval.gates import run_eval_gates
+        report["advanced"]["eval"] = run_eval_gates(report, config)
+        write_json(json_path, report)  # re-persist with eval attached
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("eval gates skipped: %s", exc)
 
     logger.info("audit complete. Outputs in %s", out_dir)
     return report

@@ -45,14 +45,14 @@ class RunRecord:
         return f"{self.brand} @ {self.generated_at.strftime('%Y-%m-%d %H:%M')}"
 
 
-def _parse_ts(s: str) -> datetime:
+def _parse_ts(s: str) -> Optional[datetime]:
     for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ",
-                "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+                "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
         try:
             return datetime.strptime(s, fmt)
         except ValueError:
             continue
-    return datetime.min
+    return None
 
 
 def load_runs(jobs_dir: str = DEFAULT_JOBS_DIR) -> List[RunRecord]:
@@ -85,9 +85,19 @@ def load_runs(jobs_dir: str = DEFAULT_JOBS_DIR) -> List[RunRecord]:
             comps = cfg.get("competitor_entities", []) or []
             key = (cfg.get("target_brand", "") + "|" + "|".join(sorted(topics))
                    + "||" + "|".join(sorted(comps)))
+            ts = _parse_ts(meta.get("generated_at", "") or "")
+            if ts is None:
+                # Corrupt timestamp: fall back to the report file mtime so the
+                # run sorts by real filesystem recency instead of datetime.min
+                # (which would wrongly sort first and fake the trend origin).
+                try:
+                    ts = datetime.fromtimestamp(os.path.getmtime(rj))
+                except OSError:
+                    logger.warning("skip run with unparseable timestamp %s", entry)
+                    continue
             runs.append(RunRecord(
                 job_id=entry,
-                generated_at=_parse_ts(meta.get("generated_at", "")),
+                generated_at=ts,
                 brand=cfg.get("target_brand", ""),
                 topics=topics,
                 competitors=comps,

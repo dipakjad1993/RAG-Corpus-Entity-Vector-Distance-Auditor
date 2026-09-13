@@ -822,7 +822,7 @@ def render_report_pdf(data: Dict[str, Any], job_id: str, out_path: str) -> str:
     else:
         el.append(_empty_note(styles, "drift rows"))
     for a in (dr.get("alerts", []) or [])[:10]:
-        el.append(Paragraph(f"⚠ {_t(a.get('topic', ''), 60)} — "
+        el.append(Paragraph(f" {_t(a.get('topic', ''), 60)} — "
                             f"{_t(a.get('message', a.get('detail', '')), 200)}", styles["body"]))
 
     # ================= 8 LLM =========================================================

@@ -58,7 +58,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # web
     pw = sub.add_parser("web", help="launch the local web UI (localhost)")
     pw.add_argument("--host", default="127.0.0.1")
-    pw.add_argument("--port", type=int, default=8765)
+    pw.add_argument("--port", type=int, default=9000)
 
     # quick
     pq = sub.add_parser("quick", help="run audit from CLI flags")

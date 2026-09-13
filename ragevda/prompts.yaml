@@ -1,0 +1,39 @@
+# RAG-EVDA Prompt Library — forward-track REAL prompts clients care about.
+# Frames: informational / transactional / comparison (+ local/qa). Each frame is
+# rendered per topic x persona, repeated `prompt_volume` times for noise.
+frames:
+  informational:
+    - "What is {topic}?"
+    - "How does {topic} work?"
+    - "Why is {topic} important for {persona}?"
+    - "{topic} explained for beginners"
+  transactional:
+    - "Best {topic} software for {persona}"
+    - "Top {topic} tools ranked and compared"
+    - "{topic} pricing comparison"
+    - "Which {topic} platform should {persona} choose?"
+  comparison:
+    - "{brand} vs alternatives for {topic}"
+    - "Is {brand} the best for {topic}?"
+    - "{topic}: how does {brand} compare to {competitor}?"
+    - "{brand} vs {competitor} for {topic}"
+  local:
+    - "{topic} near me"
+    - "Best {topic} services in {geo}"
+  qa:
+    - "Can {brand} handle {topic} at scale?"
+    - "What are the limits of {topic}?"
+
+personas:
+  - default
+  - beginner
+  - practitioner
+  - procurement-lead
+  - researcher
+
+# Answer-engine query prefixes (live LLM harvester uses these verbatim).
+answer_engines:
+  - perplexity
+  - chatgpt
+  - gemini
+  - copilot

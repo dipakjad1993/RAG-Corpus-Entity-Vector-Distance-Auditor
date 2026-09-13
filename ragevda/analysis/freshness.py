@@ -121,6 +121,11 @@ def validate_freshness(docs) -> Dict:
         http_date = (headers.get("date") or headers.get("Date") or "")
         content_type = (headers.get("content-type")
                         or headers.get("Content-Type") or "").split(";")[0].strip()
+        # 2026 additions: Cache-Control max-age, sitemap lastmod, CDX lookup.
+        cache_control = (headers.get("cache-control")
+                         or headers.get("Cache-Control") or "")
+        sitemap_lastmod = (getattr(d, "metadata", {}) or {}).get("sitemap_lastmod", "")
+        cdx_ts = (getattr(d, "metadata", {}) or {}).get("cdx_timestamp", "")
 
         # Prefer Last-Modified; else server Date; else schema/meta in content.
         published_dt = _parse_http_date(last_modified)
@@ -165,6 +170,9 @@ def validate_freshness(docs) -> Dict:
             "server_date_raw": http_date or "",
             "content_type": content_type,
             "schema_structured_data": schema_detected,
+            "cache_control": cache_control,
+            "sitemap_lastmod": sitemap_lastmod,
+            "cdx_timestamp": cdx_ts,
         })
 
     # Aggregate freshness statistics across the corpus.

@@ -179,9 +179,12 @@ def generate_synthetic(ctx, limit: int = 12) -> Dict:
 
     return {
         "per_entity": out,
-        "note": ("Each query is a plausible retrieval prompt for the entity's "
+        "verified": False,
+        "estimate": True,
+        "live_observed": False,
+        "note": ("SYNTHETIC ESTIMATE — plausible retrieval prompts for the entity's "
                  "dominant topics (derived from real proximity + window "
                  "topics). Corpus-evidence phrases are verbatim sentence "
-                 "fragments from the entity's own retrieved documents that "
-                 "ground the query in real, retrievable content."),
+                 "fragments from the entity's own retrieved documents. NEVER "
+                 "present as observed live search queries or engine telemetry."),
     }

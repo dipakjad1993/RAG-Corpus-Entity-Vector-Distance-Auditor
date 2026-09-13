@@ -108,19 +108,24 @@ class CorpusStore:
                           min_sim: float = 0.0) -> List[Tuple[str, float]]:
         q = list(map(float, vec))
         if self.available:
-            rows = self.con.execute(
-                """
-                SELECT doc_id,
-                       MAX(array_cosine_similarity(embedding, ?)) AS sim
-                FROM chunk_embeddings
-                GROUP BY doc_id
-                HAVING sim >= ?
-                ORDER BY sim DESC
-                LIMIT ?
-                """,
-                [q, min_sim, k],
-            ).fetchall()
-            return [(r[0], float(r[1])) for r in rows]
+            try:
+                rows = self.con.execute(
+                    """
+                    SELECT doc_id,
+                           MAX(array_cosine_similarity(embedding, ?)) AS sim
+                    FROM chunk_embeddings
+                    GROUP BY doc_id
+                    HAVING sim >= ?
+                    ORDER BY sim DESC
+                    LIMIT ?
+                    """,
+                    [q, min_sim, k],
+                ).fetchall()
+                return [(r[0], float(r[1])) for r in rows]
+            except Exception as exc:  # noqa: BLE001
+                # Older DuckDB without array_cosine_similarity: fall through
+                # to the exact in-memory cosine path (real math, no fake data).
+                logger.warning("DuckDB vector fn unavailable (%s); using local cosine", exc)
         # in-memory fallback
         out = []
         for doc_id, vecs in self._mem_chunks.items():
@@ -149,7 +154,17 @@ class CorpusStore:
             self.con.close()
 
     def export_parquet(self, path: str) -> None:
-        if self.available:
-            self.con.execute(
-                f"COPY (SELECT * FROM documents) TO '{path}' (FORMAT PARQUET)"
-            )
+        if not self.available:
+            return
+        if "'" in path or ";" in path or "\n" in path:
+            raise ValueError("refusing to export to unsafe parquet path")
+        if not path.lower().endswith(".parquet"):
+            raise ValueError("parquet export path must end in .parquet")
+        parent = os.path.dirname(os.path.abspath(path))
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        # Path is validated above (no quotes/semicolons); COPY cannot bind
+        # a file path as a query parameter, so validated interpolation is used.
+        self.con.execute(
+            f"COPY (SELECT * FROM documents) TO '{path}' (FORMAT PARQUET)"
+        )

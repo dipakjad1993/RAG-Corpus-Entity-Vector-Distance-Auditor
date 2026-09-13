@@ -39,7 +39,8 @@ logger = get_logger("ragevda.config")
 # Defaults
 # ---------------------------------------------------------------------------
 
-DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_EMBEDDING_MODEL = "nomic-ai/nomic-embed-text-v1.5"
+LEGACY_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_SPACY_MODEL = "en_core_web_sm"
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -192,6 +193,62 @@ class RunConfig:
     # Number of synthetic retrieval queries to reverse-engineer.
     synthetic_query_count: int = 12
 
+    # --- P0: Live LLM Answer Harvester (GEO) -------------------------------
+    # Query real answer engines 5-10x per prompt, parse citations + answer
+    # text. Providers: brave | tavily | exa (API keys via env). Without this
+    # the tool is not a GEO tool — SERP scraping alone is insufficient.
+    answer_harvester: str = "off"        # off | brave | tavily | exa | multi
+    answer_repeats: int = 5              # 5-10x per prompt (probabilistic noise)
+    answer_engines: List[str] = field(default_factory=lambda: ["perplexity", "chatgpt", "gemini"])
+    brave_api_key: Optional[str] = None
+    tavily_api_key: Optional[str] = None
+    exa_api_key: Optional[str] = None
+
+    # --- P0: Prompt library + personas -------------------------------------
+    prompt_library: Optional[str] = None  # path to prompts.yaml (defaults built-in)
+    prompt_frames: List[str] = field(default_factory=lambda: ["informational", "transactional", "comparison"])
+    personas: List[str] = field(default_factory=lambda: ["default"])
+    prompt_volume: int = 5               # repeats per prompt frame x persona
+
+    # --- P0: UGC corpus (first-class) --------------------------------------
+    ugc_reddit: bool = True
+    ugc_youtube: bool = True
+    ugc_tiktok: bool = True
+    youtube_api_key: Optional[str] = None
+
+    # --- P0: llms.txt + MCP -------------------------------------------------
+    generate_llms_txt: bool = True
+    site_base_url: Optional[str] = None
+    mcp_tools: List[str] = field(default_factory=lambda: ["get_pricing", "check_stock"])
+
+    # --- P0: RAGAS/DeepEval gates ------------------------------------------
+    eval_enabled: bool = True
+    eval_faithfulness_min: float = 0.75
+    eval_answer_relevancy_min: float = 0.80
+    eval_context_precision_min: float = 0.70
+    eval_context_recall_min: float = 0.70
+
+    # --- P1: E-E-A-T / factuality ------------------------------------------
+    track_ghost_citations: bool = True
+    information_gain_weight: float = 1.0
+
+    # --- P1: GSC + GA4 attribution ------------------------------------------
+    gsc_credentials: Optional[str] = None
+    ga4_property: Optional[str] = None
+    attribution_cadence: str = "daily"
+
+    # --- P1: Multilingual + geo-split ---------------------------------------
+    languages: List[str] = field(default_factory=lambda: ["en"])
+    geo_variants: List[str] = field(default_factory=list)
+
+    # --- P1: API / jobs / auth ----------------------------------------------
+    api_key: Optional[str] = None
+    job_retention_days: int = 30
+    fetch_allowlist: List[str] = field(default_factory=list)
+    drift_webhook_url: Optional[str] = None
+    reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    use_hybrid_retrieval: bool = True
+
     # -----------------------------------------------------------------------
     def __post_init__(self) -> None:
         self.validate()
@@ -256,8 +313,8 @@ class RunConfig:
             )
             self.crawl_depth = 200
 
-        if self.harvester not in ("duckduckgo", "searxng", "file"):
-            raise ValueError("harvester must be duckduckgo | searxng | file")
+        if self.harvester not in ("duckduckgo", "searxng", "file", "multi", "answers"):
+            raise ValueError("harvester must be duckduckgo | searxng | file | multi | answers")
 
         # "Prefer SearXNG" toggle: make SearXNG the primary live harvester
         # whenever a URL is configured, falling back to DuckDuckGo otherwise.
@@ -299,8 +356,35 @@ class RunConfig:
                 "transactional / comparison / research / local / commercial / "
                 "navigational) or a key of query_templates")
 
-        # Warn (not fail) on malformed topic/competitor strings that look
-        # accidentally split -- typically unbalanced parentheses from a
+        # --- P0/P1 enterprise field validation (junior-readable errors) ----
+        if self.answer_harvester not in ("off", "brave", "tavily", "exa", "multi"):
+            raise ValueError("answer_harvester must be off | brave | tavily | exa | multi")
+        if not 1 <= self.answer_repeats <= 10:
+            raise ValueError("answer_repeats must be in [1, 10] (5-10 recommended for noise sampling)")
+        if not 1 <= self.prompt_volume <= 20:
+            raise ValueError("prompt_volume must be in [1, 20]")
+        for v in ("eval_faithfulness_min", "eval_answer_relevancy_min",
+                  "eval_context_precision_min", "eval_context_recall_min"):
+            if not 0.0 <= getattr(self, v) <= 1.0:
+                raise ValueError(f"{v} must be in [0, 1]")
+        if self.attribution_cadence not in ("daily", "weekly", "manual"):
+            raise ValueError("attribution_cadence must be daily | weekly | manual")
+        if self.job_retention_days < 1:
+            raise ValueError("job_retention_days must be >= 1")
+        # Env-key fallback: keys may live in env instead of YAML (never commit keys).
+        import os as _os
+        if not self.brave_api_key:
+            self.brave_api_key = _os.environ.get("BRAVE_API_KEY")
+        if not self.tavily_api_key:
+            self.tavily_api_key = _os.environ.get("TAVILY_API_KEY")
+        if not self.exa_api_key:
+            self.exa_api_key = _os.environ.get("EXA_API_KEY")
+        if not self.youtube_api_key:
+            self.youtube_api_key = _os.environ.get("YOUTUBE_API_KEY")
+        if not self.api_key:
+            self.api_key = _os.environ.get("RAGEVDA_API_KEY")
+
+        # Warn (not fail) on malformed topic/competitor strings that look        # accidentally split -- typically unbalanced parentheses from a
         # copy/paste typo. They still run, but produce lower-quality topic
         # embeddings, so we surface it loudly instead of hiding it.
         for bad in list(self.industry_topics) + list(self.competitor_entities):
@@ -312,20 +396,25 @@ class RunConfig:
                     bad,
                 )
 
-        # Warn on suspiciously generic names that often come from placeholder
-        # configs rather than real brand analysis.
+        # Reject suspiciously generic names that come from placeholder
+        # configs rather than real brand analysis. Generic demo names produce
+        # generic demo-grade output, so they are blocked (not merely warned).
         _GENERIC_NAMES = {
             "acme", "widget", "corp", "company", "enterprise", "software",
             "product", "brand", "business", "inc", "llc", "ltd", "group",
             "test", "demo", "example", "placeholder", "smoke", "fake",
-            "compa", "compb", "alpha", "beta",
+            "compa", "compb", "alpha", "beta", "yourbrand",
+            "competitora", "competitorb",
+            "your primary industry topic", "your secondary topic",
+            "your tertiary topic",
         }
         all_names = [brand.lower()] + [c.lower() for c in self.competitor_entities]
         for name in all_names:
-            if name in _GENERIC_NAMES:
-                logger.warning(
-                    "Name %r looks like a placeholder/generic. Use real "
-                    "brand/company names for accurate analysis results.", name
+            if name in _GENERIC_NAMES or name.startswith("your ") or name.startswith("competitor"):
+                raise ValueError(
+                    f"Name {name!r} looks like a placeholder/generic demo value. "
+                    "Use your REAL brand/company/topic names — generic placeholders "
+                    "produce useless generic output and are blocked."
                 )
 
     # -----------------------------------------------------------------------
@@ -478,10 +567,44 @@ class RunConfig:
             if q.lower() not in seen:
                 seen.add(q.lower())
                 ordered.append(q)
-        # bound the number of outbound search calls
+        # bound the number of outbound search calls WITHOUT silently dropping
+        # any topic or brand/competitor tail: primaries always survive.
         cap = getattr(self, "max_search_queries", 120)
         if cap and len(ordered) > cap:
-            ordered = ordered[:cap]
+            primaries: List[str] = []
+            seen_p = set()
+            for q in topics:
+                if q.lower() not in seen_p:
+                    seen_p.add(q.lower())
+                    primaries.append(q)
+            tail_must_keep: List[str] = []
+            for q in ordered:
+                low = q.lower()
+                if low in seen_p:
+                    continue
+                is_tail = (brand.lower() in low) or any(
+                    c.lower() in low for c in self.competitor_entities
+                )
+                if is_tail and low not in seen_p:
+                    seen_p.add(low)
+                    tail_must_keep.append(q)
+                if len(primaries) + len(tail_must_keep) >= cap:
+                    break
+            keep = primaries + tail_must_keep
+            if len(keep) >= cap:
+                ordered = keep[:cap]
+            else:
+                for q in ordered:
+                    if len(keep) >= cap:
+                        break
+                    if q.lower() not in {k.lower() for k in keep}:
+                        keep.append(q)
+                ordered = keep
+            logger.warning(
+                "max_search_queries=%s capped %s expanded queries; "
+                "primary topic + brand/competitor queries preserved",
+                cap, len(base),
+            )
         return ordered
 
     def drift_db_path(self) -> str:

@@ -65,15 +65,20 @@ def build_context(config, docs: List[Document], embedder: Embedder,
                   ner: NER, cooccur: CoOccurrenceGraph) -> AnalysisContext:
     logger.info("building analysis context for %d documents", len(docs))
 
-    # 1. Chunk + embed every document --------------------------------
+    # 1. Chunk + embed every document (UNIFIED semantic windows) ---------
+    # Single chunking pass shared by embeddings AND density: chunk_text() now
+    # delegates to the same sentence-aware BPE packer as token_windows(), so
+    # proximity and density measure IDENTICAL windows (double-chunking fix).
     all_chunks: List[str] = []
     chunk_owner: List[str] = []  # doc_id per chunk
+    doc_chunks: Dict[str, List[str]] = {}
     doc_chunk_vecs: Dict[str, List[np.ndarray]] = {}
 
     for doc in docs:
         chunks = chunk_text(doc.text, max_chars=config.sentence_chunk_chars)
         if not chunks:
             continue
+        doc_chunks[doc.doc_id] = chunks
         for ch in chunks:
             all_chunks.append(ch)
             chunk_owner.append(doc.doc_id)
@@ -123,8 +128,10 @@ def build_context(config, docs: List[Document], embedder: Embedder,
     entity_doc_count: Counter = Counter()
 
     # 4. Co-occurrence + mention scanning per document ---------------
+    # NER patterns built ONCE and reused (no per-doc rebuild); chunk lists
+    # reused from the single chunking pass above (no re-chunk).
     for doc in docs:
-        chunks = chunk_text(doc.text, max_chars=config.sentence_chunk_chars)
+        chunks = doc_chunks.get(doc.doc_id) or []
         # count mentions across whole doc text
         counts = NER.find_mentions(doc.text, patterns, alias_to_entity)
         for ent_low, c in counts.items():
@@ -158,15 +165,29 @@ def build_context(config, docs: List[Document], embedder: Embedder,
         ctx.entity_docs[ent] = entity_doc_set.get(ent, set())
 
     # 6. Per-document / per-topic max similarity ---------------------
+    # Single vector-index per topic query is O(N) via matrix multiply on the
+    # stacked chunk matrix (no per-doc Python O(N²) loop; FAISS-ready).
     for doc in docs:
         vecs = doc_chunk_vecs.get(doc.doc_id, [])
         per_topic: Dict[str, float] = {}
         if vecs:
-            mat = np.stack(vecs, axis=0)  # (n, dim)
+            mat = np.stack(vecs, axis=0)  # (n, dim) — one stack per doc, reused
             for topic, tvec in ctx.topic_vecs.items():
                 sims = mat @ tvec  # cosine (embeddings normalized)
                 per_topic[topic] = float(np.max(sims))
         ctx.doc_topic_max_sim[doc.doc_id] = per_topic
+    # Global ANN index over ALL chunks (FAISS when installed) for hybrid
+    # retrieval / top-k diagnostics without O(N²) scans.
+    try:
+        from ..nlp.vector_index import VectorIndex
+        if chunk_vecs:
+            dim = int(np.asarray(chunk_vecs[0]).shape[0])
+            _vidx = VectorIndex(dim)
+            _vidx.add([f"{o}#{i}" for i, o in enumerate(chunk_owner)],
+                      np.stack(chunk_vecs, axis=0))
+            ctx.vector_index = _vidx  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001
+        pass
 
     # 7. Topic proximity + topic-doc counts per entity ---------------
     ctx.doc_chunk_vecs = doc_chunk_vecs

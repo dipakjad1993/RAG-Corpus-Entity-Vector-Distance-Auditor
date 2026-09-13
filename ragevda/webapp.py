@@ -60,6 +60,20 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_OUTPUT = os.path.join(ROOT, "web_output")
 SCHEDULER = Scheduler()
 
+# Persistent job store (SQLite) mirrors JOBS so jobs survive restarts and N
+# users can queue concurrently. JOBS dict remains as a live-view cache.
+try:
+    from . import jobs_store as _jobs_store
+    _jobs_store.init(WEB_OUTPUT)
+    _USE_JOB_STORE = True
+except Exception:  # noqa: BLE001
+    _USE_JOB_STORE = False
+
+# Bounded worker pool (replaces unbounded per-job threads + single-flight).
+import concurrent.futures as _fut
+_WORKERS = int(os.environ.get("RAGEVDA_WORKERS", "2"))
+_POOL = _fut.ThreadPoolExecutor(max_workers=max(1, _WORKERS))
+
 WEB_STYLE = _get_style("webapp")
 
 # Order matters: first matching keyword wins.
@@ -118,6 +132,38 @@ def _progress_from_msg(job: Dict, msg: str) -> None:
                 job["stage"] = label
                 return
     # unknown lines keep current progress
+
+
+# ---------------------------------------------------------------------------
+# Form helpers — explicit boolean parsing (unchecked is not explicit false)
+# ---------------------------------------------------------------------------
+def _parse_bool(value, default: bool = False) -> bool:
+    if value is None:
+        return default
+    low = str(value).strip().lower()
+    if low in ("1", "true", "on", "yes", "checked"):
+        return True
+    if low in ("0", "false", "off", "no", ""):
+        return False
+    return True
+
+
+def _parse_float(value, default: float) -> float:
+    try:
+        if value is None or str(value).strip() == "":
+            return default
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_int(value, default: int) -> int:
+    try:
+        if value is None or str(value).strip() == "":
+            return default
+        return int(float(str(value).strip()))
+    except (TypeError, ValueError):
+        return default
 
 
 # ---------------------------------------------------------------------------
@@ -213,6 +259,25 @@ body.light iframe,body[data-theme="light"] iframe{color-scheme:light}
 .ent-footer{margin-top:26px; padding-top:18px; border-top:1px solid var(--m3-outline-variant);
   color:var(--m3-on-surface-variant); font-size:12.5px; line-height:1.7; display:flex; gap:14px; flex-wrap:wrap; justify-content:space-between}
 kbd.m3-code{font-family:var(--m3-font)}
+/* ---- enterprise alignment / formatting hardening ---- */
+.m3-app-inner{margin:0 auto; padding:0 20px; width:100%; box-sizing:border-box}
+.m3-container{max-width:1280px; margin:0 auto; padding:20px; box-sizing:border-box}
+.m3-app-bar{position:sticky; top:0; z-index:50; backdrop-filter:blur(12px)}
+.m3-app-bar .m3-app-inner{display:flex; align-items:center; gap:14px; padding-top:10px; padding-bottom:10px}
+.m3-nav{display:flex; gap:8px; margin-left:auto; align-items:center; flex-wrap:wrap}
+.m3-nav a{padding:8px 14px; border-radius:99px; text-decoration:none; font-weight:700; font-size:13px; white-space:nowrap}
+.m3-input,.m3-select,textarea.m3-input,input.m3-input{width:100%; box-sizing:border-box; text-align:left}
+table{width:100%; border-collapse:collapse; table-layout:auto}
+th,td{padding:10px 12px; text-align:left; vertical-align:top; font-size:13px}
+th{white-space:nowrap}
+tr:nth-child(even) td{background:color-mix(in srgb, var(--m3-surface-container-high) 45%, transparent)}
+.verified-badge,.estimate-badge{display:inline-block; font-size:11px; font-weight:800; letter-spacing:.4px; padding:3px 10px; border-radius:99px; margin:2px 4px 2px 0}
+.verified-badge{background:color-mix(in srgb, #1abc9c 22%, transparent); border:1px solid #1abc9c}
+.estimate-badge{background:color-mix(in srgb, #e67e22 20%, transparent); border:1px solid #e67e22}
+.steps{display:flex; gap:8px; flex-wrap:wrap; margin:12px 0}
+.steps .step{flex:1 1 180px; padding:10px 14px; border-radius:14px; border:1px solid var(--m3-outline-variant); font-size:13px; font-weight:700}
+.steps .step.active{background:var(--m3-primary-container); color:var(--m3-on-primary-container)}
+@media(max-width:720px){.m3-app-bar .m3-app-inner{flex-wrap:wrap}.hero{padding:22px 18px}th,td{font-size:12px; padding:8px}}
 </style></head>
 <body>
 <div class="m3-app-bar"><div class="m3-app-inner">
@@ -225,7 +290,7 @@ kbd.m3-code{font-family:var(--m3-font)}
     <a href="/history">History &amp; Trends</a>
     <a href="/schedules">Schedules</a>
   </nav>
-  <button class="m3-btn outlined" id="themeBtn" title="Toggle dark / light (Material 3)">🌙 Theme</button>
+  <button class="m3-btn outlined" id="themeBtn" title="Toggle dark / light (Material 3)">Theme</button>
 </div></div>
 
 <div class="m3-container">
@@ -241,7 +306,8 @@ kbd.m3-code{font-family:var(--m3-font)}
     <span class="m3-chip"><b>100%</b> local &amp; zero-cost</span>
     <span class="m3-chip"><b>11</b> enterprise inputs</span>
     <span class="m3-chip"><b>10</b> micro-engines</span>
-    <span class="m3-chip"><b>Real-time</b> verified evidence</span>
+    <span class="m3-chip"><span class="verified-badge">VERIFIED</span> real-time evidence</span>
+    <span class="m3-chip"><span class="estimate-badge">ESTIMATE</span> engine/poisoning/queries = triage only</span>
     <span class="m3-chip"><b>M3</b> dark / light perfected</span>
   </div>
   <div class="stat-strip" id="heroStats">
@@ -263,7 +329,7 @@ kbd.m3-code{font-family:var(--m3-font)}
 <div id="page-inputs" class="page active">
 <form id="auditForm">
   <div class="card">
-    <div class="field-head"><div class="field-ico">◎</div>
+    <div class="field-head"><div class="field-ico"></div>
       <label class="m3-fieldlabel" style="margin:0">1) Target Brand Name / Website URL — Deep-Research Entry Point</label>
       <span class="field-num">INPUT 01 · REQUIRED</span><span class="fill-badge" id="fb-brand">AUTO-FILLED</span></div>
     <div class="hint">Paste a brand <b>or any website / URL</b> (e.g. <span class="m3-code">https://yoursite.com</span>) then click
@@ -272,7 +338,7 @@ kbd.m3-code{font-family:var(--m3-font)}
       language + local Ollama / SearXNG services, scores search intent, and <b>fills all 11 input groups below</b> with verified live evidence. Nothing is invented.</div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <input type="text" name="target_brand" placeholder="YourBrand or https://yoursite.com" required class="m3-input" style="flex:1;min-width:260px">
-      <button type="button" class="m3-btn" id="probeBtn">🔍 Auto-Detect Deep Research</button>
+      <button type="button" class="m3-btn" id="probeBtn">Auto-Detect Deep Research</button>
     </div>
     <div id="probeStatus" class="hint" style="margin-top:8px;display:none"></div>
     <div id="probeStages" class="hint" style="display:none; margin-top:6px"></div>
@@ -280,7 +346,7 @@ kbd.m3-code{font-family:var(--m3-font)}
 
   <div class="bento">
   <div class="card span7">
-    <div class="field-head"><div class="field-ico">◈</div>
+    <div class="field-head"><div class="field-ico"></div>
       <label class="m3-fieldlabel" style="margin:0">2) Target Industry Topics / Concepts</label>
       <span class="field-num">INPUT 02 · 3–10+</span></div>
     <div class="hint">High-value contextual topics &amp; seed keywords auto-extracted from live headings, meta keywords, JSON-LD categories, nav labels, news-sitemap headlines &amp; real search titles. One per line or comma-separated — no limit.</div>
@@ -288,7 +354,7 @@ kbd.m3-code{font-family:var(--m3-font)}
   </div>
 
   <div class="card span5">
-    <div class="field-head"><div class="field-ico">⬣</div>
+    <div class="field-head"><div class="field-ico"></div>
       <label class="m3-fieldlabel" style="margin:0">3) Competitor Entities</label>
       <span class="field-num">INPUT 03 · 2–5+</span></div>
     <div class="hint">Direct rivals mined from on-page comparisons + live “competitors / alternatives / rivals” searches, sanitized against generic words. One per line.</div>
@@ -305,7 +371,7 @@ kbd.m3-code{font-family:var(--m3-font)}
       <input type="number" name="crawl_depth" value="50" min="1" max="200" class="m3-input">
     </div>
     <div class="card">
-      <div class="field-head"><div class="field-ico">📍</div>
+      <div class="field-head"><div class="field-ico"></div>
         <label class="m3-fieldlabel" style="margin:0">5) Target Locality / Geo Target</label>
         <span class="field-num">INPUT 05 · OPTIONAL</span></div>
       <div class="hint">Region / country code (US, UK, Detroit). Detected from geo meta, hreflang, currency, city &amp; TLD signals.</div>
@@ -314,7 +380,7 @@ kbd.m3-code{font-family:var(--m3-font)}
   </div>
 
   <div class="card">
-    <button type="button" class="m3-adv" id="advToggle">▾ Enterprise inputs 6–11 + engine tuning (auto-filled — review &amp; expand)</button>
+    <button type="button" class="m3-adv" id="advToggle"> Enterprise inputs 6–11 + engine tuning (auto-filled — review &amp; expand)</button>
     <div id="advPanel" style="margin-top:14px;">
       <div class="m3-field-grid">
         <div>
@@ -367,7 +433,7 @@ kbd.m3-code{font-family:var(--m3-font)}
         <div>
           <label class="m3-fieldlabel">7) Custom Entity Weighting / Ontology Mapping</label>
           <div class="hint" style="margin:2px 0 8px;font-size:12px;">One per line: <code class="m3-code">Entity|weight</code> (weight &gt; 0, default 1) then <code class="m3-code">Entity|alias1,alias2</code> for sub-brands / product / patent names.</div>
-          <textarea name="entity_weighting" class="m3-input" placeholder="YourBrand|1.5&#10;CompetitorA|1.0&#10;YourBrand Pro|YourBrand"></textarea>
+          <textarea name="entity_weighting" class="m3-input" placeholder="AcmeCorp|1.5&#10;GlobexInc|1.0&#10;AcmeCorp Pro|AcmeCorp"></textarea>
         </div>
         <div>
           <label class="m3-fieldlabel">6) Query Templates for Search Intent (format: intent|pattern)</label>
@@ -384,7 +450,7 @@ kbd.m3-code{font-family:var(--m3-font)}
         <div>
           <label class="m3-fieldlabel">8) Historical Ground-Truth Corpora (internal brand docs)</label>
           <div class="hint" style="margin:2px 0 8px;font-size:12px;">PDF / whitepaper / Markdown file paths so the tool compares Internal Brand Perception Vector vs Web RAG Vector. One per line.</div>
-          <textarea name="corpus_files" class="m3-input" placeholder="C:\docs\your-whitepaper.pdf&#10;C:\docs\product-specs.txt"></textarea>
+          <textarea name="corpus_files" class="m3-input" placeholder="./corpus/whitepaper.pdf&#10;./corpus/product-specs.txt"></textarea>
         </div>
       </div>
       <div class="m3-field-grid" style="margin-top:12px">
@@ -396,7 +462,7 @@ kbd.m3-code{font-family:var(--m3-font)}
         <div>
           <label class="m3-fieldlabel">11b) Local corpus directory (ground-truth folder)</label>
           <div class="hint" style="margin:2px 0 8px;font-size:12px;">Alternative to per-file list — point at an entire internal docs folder.</div>
-          <input type="text" name="corpus_dir" class="m3-input" placeholder="C:\docs\ground-truth">
+          <input type="text" name="corpus_dir" class="m3-input" placeholder="./corpus/ground-truth">
         </div>
       </div>
       <div class="m3-field-grid" style="margin-top:12px">
@@ -431,8 +497,8 @@ kbd.m3-code{font-family:var(--m3-font)}
   </div>
 
   <div class="run-bar">
-    <button type="submit" class="m3-btn" id="runBtn">▶ Run Full Audit — 10 engines</button>
-    <button type="button" class="m3-btn tonal" id="outputsBtn" style="display:none">📊 Show Outputs</button>
+    <button type="submit" class="m3-btn" id="runBtn">Run Full Audit — 10 engines</button>
+    <button type="button" class="m3-btn tonal" id="outputsBtn" style="display:none">Show Outputs</button>
     <span class="hint" id="status" style="margin:0"></span>
   </div>
 
@@ -465,7 +531,7 @@ function applyTheme(t, animate){
   document.body.setAttribute('data-theme', light ? 'light' : 'dark');
   document.documentElement.style.colorScheme = light ? 'light' : 'dark';
   if(metaTheme) metaTheme.setAttribute('content', light ? '#F3EDF7' : '#141218');
-  themeBtn.textContent = light ? '☀️ Light' : '🌙 Dark';
+  themeBtn.textContent = light ? ' Light' : ' Dark';
 }
 let savedTheme = null;
 try{ savedTheme = localStorage.getItem('ragevda-theme'); }catch(e){}
@@ -474,7 +540,7 @@ applyTheme(savedTheme||'dark', false);
 themeBtn.onclick = () => {
   const next = (document.body.classList.contains('light') || document.body.getAttribute('data-theme')==='light') ? 'dark':'light';
   try{ localStorage.setItem('ragevda-theme', next); }catch(e){}
-  applyTheme(next, true); toast(next==='light' ? '☀️ Light mode — Material 3 light tokens applied.' : '🌙 Dark mode — Material 3 dark tokens applied.');
+  applyTheme(next, true); toast(next==='light' ? 'Light mode — Material 3 light tokens applied.' : 'Dark mode — Material 3 dark tokens applied.');
 };
 function toast(msg, kind){
   const box=document.getElementById('toasts'); if(!box) return;
@@ -503,7 +569,7 @@ adv.onclick = () => {
   const p = document.getElementById('advPanel');
   const hidden = p.style.display === 'none';
   p.style.display = hidden ? 'block' : 'none';
-  adv.textContent = (hidden ? '▾' : '▸') + ' Enterprise inputs 6–11 + engine tuning (auto-filled — review & expand)';
+  adv.textContent = (hidden ? '' : '') + ' Enterprise inputs 6–11 + engine tuning (auto-filled — review & expand)';
 };
 
 function splitList(s){ return s.split(/[\n,]/).map(x=>x.trim()).filter(Boolean); }
@@ -536,7 +602,7 @@ function fillField(name, value){
     const p=document.getElementById('advPanel');
     if(p && p.style.display==='none'){
       p.style.display='block';
-      document.getElementById('advToggle').textContent='▾ Enterprise inputs 6–11 + engine tuning (auto-filled — review & expand)';
+      document.getElementById('advToggle').textContent=' Enterprise inputs 6–11 + engine tuning (auto-filled — review & expand)';
     }
   }
   el.dispatchEvent(new Event('change',{bubbles:true}));
@@ -546,7 +612,7 @@ async function runProbe(){
   const input=document.querySelector('[name="target_brand"]').value.trim();
   if(!input){ setProbeStatus('Enter a brand or URL first.', false); return; }
   probeBtn.disabled=true; probeBtn.textContent='⏳ Deep-researching…';
-  setProbeStatus('🔍 <b>Stage 1/4</b> fetching live homepage + robots / sitemap / about / products…', true);
+  setProbeStatus(' <b>Stage 1/4</b> fetching live homepage + robots / sitemap / about / products…', true);
   const stages=document.getElementById('probeStages'); stages.style.display='block';
   stages.innerHTML='<div class="skel" style="height:14px; margin:4px 0"></div><div class="skel" style="height:14px; margin:4px 0"></div>';
   const stageTimer=setInterval(()=>{ stages.innerHTML+=''; }, 1000);
@@ -556,7 +622,7 @@ async function runProbe(){
       body:JSON.stringify({query:input})});
     const d=await resp.json();
     clearInterval(stageTimer); stages.style.display='none';
-    if(d.error){ setProbeStatus('Detect failed: '+d.error, false); probeBtn.disabled=false; probeBtn.textContent='🔍 Auto-Detect Deep Research'; return; }
+    if(d.error){ setProbeStatus('Detect failed: '+d.error, false); probeBtn.disabled=false; probeBtn.textContent='Auto-Detect Deep Research'; return; }
     // Fill EVERY returned field that has a matching form element.
     const known=['target_brand','industry_topics','competitor_entities','crawl_depth',
       'locality','harvester','prefer_searxng','searxng_base_url','auto_threshold',
@@ -588,13 +654,13 @@ async function runProbe(){
     const missing = ['corpus_dir','corpus_files'].filter(k=>{
       const el=document.querySelector('[name="'+k+'"]'); return el && (!el.value||!el.value.trim());
     });
-    let msg='✅ <b>Deep research complete.</b> Brand "'+detested.brand+'" with '+detested.topics+' live topics &amp; '+
+    let msg=' <b>Deep research complete.</b> Brand "'+detested.brand+'" with '+detested.topics+' live topics &amp; '+
       detested.comps+' verified competitors (locality '+detested.locality+'). <b>'+filled.length+'/'+known.length+' enterprise fields auto-filled</b> from real-time evidence.'+note;
     if(missing.length) msg+=' · <b>Add manually:</b> '+missing.join(', ')+' (internal paths only — undetectable from the web)';
     setProbeStatus(msg, true);
-    toast('✅ Deep research filled '+filled.length+' fields with verified live data.', 'ok');
+    toast(' Deep research filled '+filled.length+' fields with verified live data.', 'ok');
   }catch(err){ setProbeStatus('Detect error: '+err, false); }
-  probeBtn.disabled=false; probeBtn.textContent='🔍 Auto-Detect Deep Research';
+  probeBtn.disabled=false; probeBtn.textContent='Auto-Detect Deep Research';
 }
 probeBtn.addEventListener('click', runProbe);
 document.querySelector('[name="target_brand"]').addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); runProbe(); } });
@@ -621,7 +687,7 @@ document.getElementById('auditForm').addEventListener('submit', async (e) => {
   consoleEl.style.display='block'; consoleEl.innerHTML='';
   barwrap.style.display='block';
   statusEl.textContent='Queued — starting full 10-engine live audit…';
-  toast('▶ Full audit started — 10 micro-engines running locally.');
+  toast(' Full audit started — 10 micro-engines running locally.');
   startTs=Date.now();
   document.getElementById('barfill').style.width='4%';
   const pctEl=document.getElementById('pct'); if(pctEl) pctEl.textContent='4%';
@@ -672,7 +738,7 @@ function finish(jobId){
   document.getElementById('status').textContent='Audit complete — deep analysis ready.';
   document.getElementById('runBtn').disabled=false;
   const outBtn=document.getElementById('outputsBtn'); if(outBtn){ outBtn.style.display=''; outBtn.onclick=()=>loadOutputs(jobId); }
-  toast('✅ Audit complete — opening in-depth 10-engine analysis.', 'ok');
+  toast(' Audit complete — opening in-depth 10-engine analysis.', 'ok');
   document.getElementById('page-inputs').classList.remove('active');
   loadFeatures(jobId);
 }
@@ -692,7 +758,7 @@ function loadFeatures(jobId, fromTab){
   if(!fromTab){ document.getElementById('page-inputs').classList.remove('active'); document.getElementById('page-outputs').classList.remove('active'); }
   el.classList.add('active');
   fetch('/page/analysis/'+jobId).then(r=>r.text()).then(h=>{
-    el.innerHTML = h + '<div class="nav-btns"><button class="m3-btn" onclick="loadOutputs(\''+jobId+'\')">📊 Show Outputs — verified report →</button><button class="m3-btn outlined" onclick="goStep(\'inputs\')">← Back to Inputs</button></div>';
+    el.innerHTML = h + '<div class="nav-btns"><button class="m3-btn" onclick="loadOutputs(\''+jobId+'\')">Show Outputs — verified report →</button><button class="m3-btn outlined" onclick="goStep(\'inputs\')">← Back to Inputs</button></div>';
     window.scrollTo({top:0, behavior:'smooth'});
   }).catch(()=>{ el.innerHTML='<div class="card err">Failed to load analysis.</div>'; });
 }
@@ -707,7 +773,7 @@ function loadOutputs(jobId, fromTab){
   fetch('/page/outputs/'+jobId).then(r=>r.text()).then(h=>{
     el.innerHTML = h + '<div class="nav-btns"><button class="m3-btn outlined" onclick="backToFeatures()">← Back to Analysis</button><button class="m3-btn tonal" onclick="goStep(\'inputs\')">＋ New Audit</button></div>';
     window.scrollTo({top:0, behavior:'smooth'});
-    toast('📊 Outputs ready — verified competitive report below.', 'ok');
+    toast(' Outputs ready — verified competitive report below.', 'ok');
   }).catch(()=>{ el.innerHTML='<div class="card err">Failed to load outputs.</div>'; });
 }
 
@@ -733,19 +799,14 @@ def _start_run(profile: dict) -> str:
     scheduled runs land in the same ``web_output/jobs`` store and appear in
     History/Trends automatically.
 
-    Single-flight: the local engine (CPU embeddings + transformer sentiment)
+    Concurrency: jobs queue persistently (SQLite) with a bounded worker pool
     runs ONE audit at a time. A second submission while one is running raises a
     friendly error instead of launching a parallel run whose logs/progress would
     cross-contaminate the first job's live view.
     """
-    with JOBS_LOCK:
-        running = [jid for jid, j in JOBS.items() if j.get("status") == "running"]
-    if running:
-        raise RuntimeError(
-            "Another audit is already running (job %s). This engine runs one "
-            "audit at a time so CPU-heavy embeddings stay accurate — track it "
-            "in History & Trends or wait for it to finish." % running[0]
-        )
+    # Persistent queue: no single-flight rejection; concurrency is bounded
+    # by the worker pool (RAGEVDA_WORKERS). Queue depth is unlimited.
+    pass
     from .config import RunConfig
 
     brand = (profile.get("target_brand") or "").strip()
@@ -857,10 +918,15 @@ def _start_run(profile: dict) -> str:
     cfg.output_dir = job_dir
     with JOBS_LOCK:
         JOBS[job_id] = {
-            "status": "running", "logs": [], "progress": 2,
+            "status": "queued", "logs": [], "progress": 2,
             "stage": "Queued", "dir": job_dir, "error": "",
         }
-    threading.Thread(target=_worker, args=(job_id, cfg), daemon=True).start()
+    if _USE_JOB_STORE:
+        try:
+            _jobs_store.create(job_id, job_dir)
+        except Exception:
+            pass
+    _POOL.submit(_worker, job_id, cfg)
     return job_id
 
 
@@ -919,8 +985,8 @@ def _page(title: str, body: str) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title} — RAG-EVDA</title><style>{_PAGE_CSS}</style></head>
 <body><div class="wrap">
-<nav class="topnav"><a href="/">🏠 Audit</a>
-<a href="/history">📈 History &amp; Trends</a>
+<nav class="topnav"><a href="/"> Audit</a>
+<a href="/history"> History &amp; Trends</a>
 <a href="/schedules">⏱ Schedules</a></nav>
 {body}</div></body></html>"""
 
@@ -1051,7 +1117,7 @@ def render_schedules_page() -> str:
           <div><label>SearXNG base URL</label><br>
             <input name="searxng_base_url" placeholder="http://localhost:8080" style="min-width:200px"></div>
           <div><label>Local corpus dir</label><br>
-            <input name="corpus_dir" placeholder="C:\docs\ground-truth" style="min-width:180px"></div>
+            <input name="corpus_dir" placeholder="./corpus/ground-truth" style="min-width:180px"></div>
         </div>
         <div class="inline">
           <label style="display:flex;gap:6px;align-items:center;color:#c7d0e6">
@@ -1067,14 +1133,48 @@ def render_schedules_page() -> str:
 
 
 def create_app() -> Flask:
-    app = Flask(__name__)
+    import os as _os
+    _tpl = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                       'web_templates')
+    _st = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                      'static')
+    app = Flask(__name__, template_folder=_tpl if _os.path.isdir(_tpl) else None,
+                static_folder=_st if _os.path.isdir(_st) else None)
+    try:
+        from .security import rate_limited as _rl, check_api_key as _auth
+    except Exception:
+        _rl = None; _auth = None
 
     @app.route("/")
     def index():
+        import os as _os2
+        _p = _os2.path.join(_os2.path.dirname(_os2.path.abspath(__file__)),
+                          'web_templates', 'index.html')
+        if _os2.path.exists(_p):
+            with open(_p, encoding='utf-8') as _fh:
+                return _fh.read().replace('__M3_STYLE__', WEB_STYLE)
         return INDEX_HTML.replace("__M3_STYLE__", WEB_STYLE)
 
     @app.route("/run", methods=["POST"])
     def run_audit():
+        from flask import request as _rq
+        try:
+            from .security import rate_limited as _rl2, check_api_key as _auth2, \
+                check_csrf as _csrf, api_key_configured as _akc
+            ip = (_rq.remote_addr or 'local')
+            if _rl2(ip):
+                return Response(json.dumps({"error": "rate limited"}),
+                                status=429, mimetype="application/json")
+            if _akc():
+                key = (_rq.headers.get('X-API-Key', '') or _rq.form.get('api_key', ''))
+                if not _auth2(key):
+                    return Response(json.dumps({"error": "unauthorized"}),
+                                    status=401, mimetype="application/json")
+                if not _csrf(_rq.cookies.get('csrf', ''), _rq.headers.get('X-CSRF-Token', '')):
+                    return Response(json.dumps({"error": "csrf mismatch"}),
+                                    status=403, mimetype="application/json")
+        except Exception:
+            pass
         form = request.form
         profile = {
             "target_brand": form.get("target_brand"),
@@ -1082,16 +1182,16 @@ def create_app() -> Flask:
                                 form.get("industry_topics", "").replace("\n", ",").split(",") if t.strip()],
             "competitor_entities": [c.strip() for c in
                                     form.get("competitor_entities", "").replace("\n", ",").split(",") if c.strip()],
-            "crawl_depth": form.get("crawl_depth") or 50,
+            "crawl_depth": _parse_int(form.get("crawl_depth"), 50),
             "locality": form.get("locality") or "",
             "harvester": form.get("harvester") or "duckduckgo",
-            "prefer_searxng": form.get("prefer_searxng") is not None,
+            "prefer_searxng": _parse_bool(form.get("prefer_searxng"), False),
             "searxng_base_url": form.get("searxng_base_url") or "",
             "corpus_dir": form.get("corpus_dir") or "",
             "embedding_model": form.get("embedding_model") or "sentence-transformers/all-MiniLM-L6-v2",
             "spacy_model": form.get("spacy_model") or "en_core_web_sm",
-            "auto_threshold": form.get("auto_threshold") is not None,
-            "high_relevance_threshold": form.get("high_relevance_threshold") or 0.70,
+            "auto_threshold": _parse_bool(form.get("auto_threshold"), True),
+            "high_relevance_threshold": _parse_float(form.get("high_relevance_threshold"), 0.70),
             "search_intent": form.get("search_intent") or "informational",
             "engine_matrix": form.get("engine_matrix") or "",
             "ontology_aliases": form.get("ontology_aliases") or "",
@@ -1100,11 +1200,11 @@ def create_app() -> Flask:
             "corpus_files": form.get("corpus_files") or "",
             "serp_footprints": form.get("serp_footprints") or "",
             "content_feeds": form.get("content_feeds") or "",
-            "chunk_tokens": form.get("chunk_tokens") or 512,
-            "chunk_overlap_tokens": form.get("chunk_overlap_tokens") or 64,
-            "target_entity_density": form.get("target_entity_density") or 0.015,
-            "top_k_retrieval": form.get("top_k_retrieval") or 5,
-            "synthetic_query_count": form.get("synthetic_query_count") or 12,
+            "chunk_tokens": _parse_int(form.get("chunk_tokens"), 512),
+            "chunk_overlap_tokens": _parse_int(form.get("chunk_overlap_tokens"), 64),
+            "target_entity_density": _parse_float(form.get("target_entity_density"), 0.015),
+            "top_k_retrieval": _parse_int(form.get("top_k_retrieval"), 5),
+            "synthetic_query_count": _parse_int(form.get("synthetic_query_count"), 12),
             "ollama_base_url": form.get("ollama_base_url") or "",
             "ollama_model": form.get("ollama_model") or "llama3",
         }
@@ -1121,6 +1221,12 @@ def create_app() -> Flask:
             j = JOBS.get(job)
             snap = dict(j) if j else None
             logs = list(j["logs"]) if j else []
+        if not snap and _USE_JOB_STORE:
+            try:
+                snap = _jobs_store.get(job)
+                logs = (snap.get("logs", []) if snap else [])
+            except Exception:
+                pass
         if not snap:
             return Response(json.dumps({"status": "not_found"}), mimetype="application/json")
         return Response(json.dumps({
@@ -1278,8 +1384,8 @@ def create_app() -> Flask:
             "<meta name='viewport' content='width=device-width,initial-scale=1'>"
             f"<title>Deep Analysis — RAG-EVDA</title><style>{_PAGE_CSS}</style>"
             "</head><body><div class='wrap'>"
-            "<nav class='topnav'><a href='/'>🏠 Audit</a>"
-            "<a href='/history'>📈 History &amp; Trends</a>"
+            "<nav class='topnav'><a href='/'> Audit</a>"
+            "<a href='/history'> History &amp; Trends</a>"
             "<a href='/schedules'>⏱ Schedules</a></nav>"
             + body +
             "<div style='margin-top:24px;text-align:center'>"
@@ -1329,7 +1435,7 @@ def create_app() -> Flask:
                 depth=int(form.get("crawl_depth") or 50),
                 locality=form.get("locality") or None,
                 harvester=form.get("harvester") or "duckduckgo",
-                prefer_searxng=form.get("prefer_searxng") is not None,
+                prefer_searxng=_parse_bool(form.get("prefer_searxng"), False),
                 searxng_base_url=form.get("searxng_base_url") or None,
                 search_intent=form.get("search_intent") or "informational",
                 chunk_tokens=int(form.get("chunk_tokens") or 512),
@@ -1339,7 +1445,7 @@ def create_app() -> Flask:
                 corpus_dir=form.get("corpus_dir") or None,
                 embedding_model="sentence-transformers/all-MiniLM-L6-v2",
                 spacy_model="en_core_web_sm",
-                auto_threshold=form.get("auto_threshold") is not None,
+                auto_threshold=_parse_bool(form.get("auto_threshold"), True),
                 high_relevance_threshold=0.70,
             )
             SCHEDULER.add(sched)

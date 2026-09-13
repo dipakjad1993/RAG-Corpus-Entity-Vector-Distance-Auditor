@@ -246,6 +246,10 @@ def analyze_poisoning(docs, config) -> Dict:
         "brand_machine_score": brand_machine_agg,
         "brand_repetition_score": brand_rep_agg,
         "brand_generated_phrase_hits": brand_generated_hits,
-        "method": ("thin-content + toxic-co-citation + link-density + "
-                   "machine-generated-repetition heuristics"),
+        "verified": False,
+        "estimate": True,
+        "method": ("HEURISTIC TRIAGE ESTIMATE — thin-content + toxic-co-citation + "
+                   "link-density + machine-generated-repetition heuristics. "
+                   "Use only for manual review prioritisation, never as an ML "
+                   "probability or verified penalty."),
     }

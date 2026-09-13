@@ -36,8 +36,13 @@ class NER:
         "en_core_web_trf",
         "en_core_web_lg",
         "en_core_web_md",
+        "xx_ent_wiki_sm",
         "en_core_web_sm",
     ]
+    # Optional zero-shot product/sub-brand ontology extractor (GLiNER) — used
+    # only when installed; spaCy remains the primary path. Keeps the existing
+    # entity_aliases/ontology_aliases logic, just upgrades the model surface.
+    GLINER_MODEL = "urchade/gliner_multi-v2.1"
 
     def __init__(self, model_name: str = "en_core_web_sm",
                  require_real: bool = False) -> None:

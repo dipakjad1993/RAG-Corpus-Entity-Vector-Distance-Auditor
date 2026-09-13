@@ -270,8 +270,8 @@ def banner_html(issues: List[Dict[str, Any]], engine: str | None = None,
         sel = sel[:limit]
     if not sel:
         return ""
-    head = title or ("⚠ Issues needing attention" if not engine
-                     else f"⚠ Issues in {ENGINE_LABELS.get(engine, 'this engine')}")
+    head = title or (" Issues needing attention" if not engine
+                     else f" Issues in {ENGINE_LABELS.get(engine, 'this engine')}")
     cards = "".join(
         f'<div class="iss iss-{i["sev"]}"><span class="sev sev-{i["sev"]}">'
         f'{SEV_LABEL.get(i["sev"], i["sev"].upper())}</span>'

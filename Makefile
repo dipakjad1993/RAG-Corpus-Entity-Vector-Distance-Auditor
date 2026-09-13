@@ -19,4 +19,4 @@ docker-build:
 	docker build -t ragevda .
 
 clean:
-	rm -rf web_output/jobs/temp ragevda_output
+	python -c "import shutil,pathlib; [shutil.rmtree(p,ignore_errors=True) for p in ['web_output/jobs/temp','ragevda_output']]"

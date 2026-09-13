@@ -264,7 +264,7 @@ def _render_advanced(adv: Dict[str, Any], brand: str, cfg: Dict,
     if drifts:
         drows = ""
         for d in drifts:
-            anomaly = '<span style="color:#e74c3c">⚑</span>' if d.get("anomaly") else ""
+            anomaly = '<span style="color:#e74c3c"></span>' if d.get("anomaly") else ""
             drows += (
                 f"<tr><td>{_esc(d['topic'])} {anomaly}</td><td>{d['proximity']:.3f}</td>"
                 f"<td>{d['proximity_delta']:+.3f}</td><td>{d['invisibility_pct']}%</td>"
@@ -285,7 +285,7 @@ def _render_advanced(adv: Dict[str, Any], brand: str, cfg: Dict,
         <tbody>{drows}</tbody></table>
         <div class="footer">Δ vs the most recent prior run for the same brand+topic
         (persisted in <code>drift_timeseries.duckdb</code>). 'Trend prox/run' is a real
-        linear-regression slope over the full history; '⚑' marks a z-score anomaly
+        linear-regression slope over the full history; '' marks a z-score anomaly
         (|z| ≥ 2). Only data points from real runs contribute.</div></section>""")
 
     # ---- Synthetic queries ------------------------------------------

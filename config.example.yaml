@@ -22,15 +22,29 @@ competitor_entities:
 crawl_depth: 50                    # Pages per search query (1-200)
 max_search_queries: 120            # Bounds live search calls
 locality: null                     # e.g. "US", "UK", null for global
-harvester: "duckduckgo"            # duckduckgo | searxng | file
-searxng_base_url: null             # Required if harvester=searxng
+harvester: "multi"                 # multi | searxng | duckduckgo (fallback-only) | file | answers
+searxng_base_url: null             # Self-hosted SearXNG (primary live source when set)
 corpus_dir: null                   # Local folder for file-mode harvester
 include_reddit: true
 include_news: true
+# Paid search APIs (primary live coverage; keys via YAML or env BRAVE_API_KEY /
+# TAVILY_API_KEY / EXA_API_KEY — never commit keys, prefer env)
+brave_api_key: null
+tavily_api_key: null
+exa_api_key: null
+# First-class UGC corpus (earned media is ~80-90% of AI answers)
+ugc_reddit: true
+ugc_youtube: true
+ugc_tiktok: true
 
 # ---- NLP / embedding models (local, zero-cost) ----
-embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
-spacy_model: "en_core_web_sm"
+# Default 2026: nomic-embed-text-v1.5 (137M, CPU-fast, Apache-2.0, 8k ctx).
+# Alternatives when cached: BAAI/bge-m3 (100+ langs, hybrid), Qwen/Qwen3-Embedding-0.6B.
+# MiniLM kept as last-resort fallback only.
+embedding_model: "nomic-ai/nomic-embed-text-v1.5"
+spacy_model: "en_core_web_sm"      # multilingual xx_ent_wiki_sm + GLiNER tried when available
+reranker_model: "BAAI/bge-reranker-v2-m3"
+use_hybrid_retrieval: true         # BM25 + dense cosine + cross-encoder rerank
 
 # ---- Output ----
 output_dir: "./ragevda_output"
@@ -73,3 +87,39 @@ synthetic_query_count: 12
 use_llm: true
 ollama_base_url: null
 ollama_model: "llama3"
+
+# ---- P0: Live LLM Answer Harvester (GEO) ----
+# Queries real answer surfaces Nx per prompt, parses citations + answer text.
+# off | brave | tavily | exa | multi (requires the API keys above)
+answer_harvester: "off"
+answer_repeats: 5                  # 5-10x per prompt (probabilistic noise sampling)
+
+# ---- P0: Prompt library + personas (forward-track real prompts) ----
+prompt_library: null               # path to prompts.yaml (built-in default otherwise)
+prompt_frames: ["informational", "transactional", "comparison"]
+personas: ["default"]
+prompt_volume: 5                   # repeats per prompt frame x persona
+
+# ---- P0: llms.txt + MCP (agent discoverability) ----
+generate_llms_txt: true
+site_base_url: null                # e.g. "https://yourcompany.com"
+mcp_tools: ["get_pricing", "check_stock"]
+
+# ---- P0: RAGAS-style eval gates (fail the build if hallucinating) ----
+eval_enabled: true
+eval_faithfulness_min: 0.75
+eval_answer_relevancy_min: 0.80
+eval_context_precision_min: 0.70
+eval_context_recall_min: 0.70
+
+# ---- P1: E-E-A-T / attribution / multilingual / jobs ----
+track_ghost_citations: true        # brand-cited-but-unnamed mentions (73% of mentions)
+gsc_credentials: null              # service-account JSON for Gen-AI impressions
+ga4_property: null                 # GA4 property for chatgpt/perplexity/claude channels
+attribution_cadence: "daily"       # daily | weekly | manual
+languages: ["en"]
+geo_variants: []                   # e.g. ["US", "UK"] prompt geo-splits
+api_key: null                      # or env RAGEVDA_API_KEY (web/API auth)
+job_retention_days: 30
+fetch_allowlist: []                # optional outbound-fetch domain allowlist
+drift_webhook_url: null            # Slack-compatible webhook for drift alerts

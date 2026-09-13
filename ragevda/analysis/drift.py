@@ -182,13 +182,15 @@ def _two_tailed_p(z: float) -> float:
         return 0.0 if z else 1.0
     z = abs(z)
     t = 1.0 / (1.0 + 0.2316419 * z)
+    import math as _math
+    phi = _math.exp(-z * z / 2.0) / 2.506628274631  # N(0,1) pdf (was *sqrt2pi: fixed)
     p_hi = 1.0 - (
         0.319381530 * t
         - 0.356563782 * t * t
         + 1.781477937 * t * t * t
         - 1.821255978 * t * t * t * t
         + 1.330274429 * t * t * t * t * t
-    ) * (2.506628274631 * (2.718281828459 ** (-z * z / 2.0)))
+    ) * phi
     p_hi = max(0.0, min(1.0, p_hi))
     return round(2.0 * (1.0 - p_hi), 6)
 
@@ -247,6 +249,7 @@ def compute_drift(store: DriftStore, job_id: str, generated_at: str,
             "trend_proximity_per_run": round(_linear_trend(hist_prox), 4),
             "trend_invisibility_per_run": round(_linear_trend(hist_inv), 3),
             "trend_sov_per_run": round(_linear_trend(hist_sov), 3),
+            "forecast_next_proximity": forecast_next(hist_prox + [s["proximity"]]),
             "anomaly": False,
             "anomaly_metric": None,
         }
@@ -322,4 +325,36 @@ def compute_drift(store: DriftStore, job_id: str, generated_at: str,
         "per_topic": per_topic_drift,
         "alerts": alerts,
         "db_path": store.db_path,
+        "forecast": {e["topic"]: {"next_proximity": e.get("forecast_next_proximity"),
+                                  "trend_per_run": e.get("trend_proximity_per_run")}
+                     for e in per_topic_drift},
     }
+
+
+def forecast_next(values: List[float]) -> Optional[float]:
+    """ETS-lite forecast: last value + slope (Prophet-style trend when scipy absent).
+
+    Uses the linear-regression slope over the series; returns None when <3 points.
+    """
+    if len(values) < 3:
+        return None
+    slope = _linear_trend(values)
+    return round(values[-1] + slope, 4)
+
+
+def send_alert_webhook(webhook_url: str, alerts: List[Dict], job_id: str) -> bool:
+    """POST drift alerts to a Slack-compatible webhook. Fail-open (False on error)."""
+    if not webhook_url or not alerts:
+        return False
+    try:
+        import httpx
+        from ..utils import assert_url_allowed
+        assert_url_allowed(webhook_url)
+        text = f"RAG-EVDA drift alerts ({job_id}): " + "; ".join(
+            f"{a.get('topic')}: {a.get('reason')}" for a in alerts[:10])
+        with httpx.Client(timeout=15) as c:
+            r = c.post(webhook_url, json={"text": text})
+            return 200 <= r.status_code < 300
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("drift webhook failed: %s", exc)
+        return False

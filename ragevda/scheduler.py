@@ -23,7 +23,10 @@ from .utils import get_logger
 
 logger = get_logger("ragevda.scheduler")
 
-DEFAULT_SCHEDULES_FILE = os.path.join("web_output", "schedules.json")
+DEFAULT_SCHEDULES_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "web_output", "schedules.json",
+)
 DEFAULT_INTERVAL_MIN = 360  # 6 hours
 
 
@@ -60,10 +63,17 @@ class Schedule:
     def next_run(self) -> Optional[datetime]:
         base = self.last_run or self.created_at
         try:
-            dt = datetime.strptime(base, "%Y-%m-%dT%H:%M:%SZ")
+            dt = datetime.strptime(base, "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=timezone.utc
+            )
         except ValueError:
-            dt = datetime.min
-        return dt + timedelta(minutes=self.interval_minutes)
+            # Corrupt timestamp: do NOT collapse to datetime.min (would fire
+            # in a tight loop). Schedule one full interval from now instead.
+            logger.warning("corrupt schedule timestamp %r; delaying one interval", base)
+            return datetime.now(timezone.utc) + timedelta(
+                minutes=max(1, self.interval_minutes)
+            )
+        return dt + timedelta(minutes=max(1, self.interval_minutes))
 
     def profile(self) -> Dict:
         return {
@@ -143,7 +153,8 @@ class Scheduler:
             return sorted(self._schedules.values(), key=lambda s: s.created_at)
 
     def get(self, sid: str) -> Optional[Schedule]:
-        return self._schedules.get(sid)
+        with self._lock:
+            return self._schedules.get(sid)
 
     # ---- engine ---------------------------------------------------------
     def start(self, callback: Callable[[Dict], Optional[str]]) -> None:
@@ -165,7 +176,7 @@ class Scheduler:
         if not self._callback:
             return []
         fired: List[str] = []
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
         with self._lock:
             due = [s for s in self._schedules.values()
                    if s.enabled and (s.next_run() or now) <= now]

@@ -46,47 +46,48 @@ _FONT_FALLBACK = (
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 )
 
-# Authentic Material 3 color tokens — 2026 Google Pixel / Material 3 Expressive.
-# Dark baseline matches Pixel system dark (Google Messages / Pixel Studio tones);
-# light baseline matches Pixel system light. Both expose identical token names so
-# runtime dark<->light switching re-renders every surface correctly.
+# 2026 Enterprise "Midnight Aurora" — vivid indigo + cyan + emerald on deep navy.
+# Replaces the flat grey-purple M3 baseline that looked dated. Dark surfaces
+# carry a blue tint, primary is electric indigo, secondary is cyan,
+# tertiary is emerald. Light mode is an icy indigo-tinted paper, not beige-grey.
+# Both expose identical token names so dark<->light toggle still re-renders.
 _M3_DARK = {
-    "primary": "#D0BCFF", "on-primary": "#381E72",
-    "primary-container": "#4F378B", "on-primary-container": "#EADDFF",
-    "secondary": "#CCC2DC", "on-secondary": "#332D41",
-    "secondary-container": "#4A4458", "on-secondary-container": "#E8DEF8",
-    "tertiary": "#EFB8C8", "on-tertiary": "#492532",
-    "tertiary-container": "#633B48", "on-tertiary-container": "#FFD8E4",
-    "error": "#F2B8B5", "on-error": "#601410",
-    "error-container": "#8C1D18", "on-error-container": "#FFDAD6",
-    "surface": "#141218", "surface-dim": "#141218", "surface-bright": "#3B383E",
-    "surface-container-lowest": "#0E0D11", "surface-container-low": "#1D1B20",
-    "surface-container": "#211F26", "surface-container-high": "#2B2930",
-    "surface-container-highest": "#36343B",
-    "on-surface": "#E6E0E9", "on-surface-variant": "#CAC4D0",
-    "outline": "#938F99", "outline-variant": "#49454F", "scrim": "#000000",
+    "primary": "#818CF8", "on-primary": "#101130",
+    "primary-container": "#2E33A6", "on-primary-container": "#E7E7FF",
+    "secondary": "#22D3EE", "on-secondary": "#062A33",
+    "secondary-container": "#0E3A45", "on-secondary-container": "#C9F6FF",
+    "tertiary": "#34D399", "on-tertiary": "#052E22",
+    "tertiary-container": "#064E3B", "on-tertiary-container": "#D1FAE5",
+    "error": "#FDA4AF", "on-error": "#450A0A",
+    "error-container": "#7F1D1D", "on-error-container": "#FFE4E6",
+    "surface": "#070C1D", "surface-dim": "#070C1D", "surface-bright": "#22304F",
+    "surface-container-lowest": "#04070F", "surface-container-low": "#0B1226",
+    "surface-container": "#111A33", "surface-container-high": "#182544",
+    "surface-container-highest": "#1F2F56",
+    "on-surface": "#EDF1FF", "on-surface-variant": "#A8B3CF",
+    "outline": "#5B6B8C", "outline-variant": "#26314F", "scrim": "#000000",
 }
 
 _M3_LIGHT = {
-    "primary": "#6750A4", "on-primary": "#FFFFFF",
-    "primary-container": "#EADDFF", "on-primary-container": "#21005D",
-    "secondary": "#625B71", "on-secondary": "#FFFFFF",
-    "secondary-container": "#E8DEF8", "on-secondary-container": "#1D192B",
-    "tertiary": "#7D5260", "on-tertiary": "#FFFFFF",
-    "tertiary-container": "#FFD8E4", "on-tertiary-container": "#31111D",
-    "error": "#BA1A1A", "on-error": "#FFFFFF",
-    "error-container": "#FFDAD6", "on-error-container": "#410002",
-    "surface": "#FEF7FF", "surface-dim": "#DED8E1", "surface-bright": "#FEF7FF",
-    "surface-container-lowest": "#FFFFFF", "surface-container-low": "#F7F2FA",
-    "surface-container": "#F3EDF7", "surface-container-high": "#ECE6F0",
-    "surface-container-highest": "#E6E0E9",
-    "on-surface": "#1D1B20", "on-surface-variant": "#49454F",
-    "outline": "#79747E", "outline-variant": "#CAC4D0", "scrim": "#000000",
+    "primary": "#4F46E5", "on-primary": "#FFFFFF",
+    "primary-container": "#E0E7FF", "on-primary-container": "#1E1B4B",
+    "secondary": "#0891B2", "on-secondary": "#FFFFFF",
+    "secondary-container": "#CFFAFE", "on-secondary-container": "#164E63",
+    "tertiary": "#059669", "on-tertiary": "#FFFFFF",
+    "tertiary-container": "#D1FAE5", "on-tertiary-container": "#064E3B",
+    "error": "#DC2626", "on-error": "#FFFFFF",
+    "error-container": "#FECACA", "on-error-container": "#7F1D1D",
+    "surface": "#F5F7FF", "surface-dim": "#DDE3F5", "surface-bright": "#FFFFFF",
+    "surface-container-lowest": "#FFFFFF", "surface-container-low": "#EFF3FF",
+    "surface-container": "#E8EDFF", "surface-container-high": "#DDE5FA",
+    "surface-container-highest": "#D2DCF5",
+    "on-surface": "#0B1226", "on-surface-variant": "#4A5878",
+    "outline": "#7C8AA8", "outline-variant": "#C4CDE3", "scrim": "#000000",
 }
 
-# M3 elevation tints approximate surface-container-high/highest progression.
-_DARK_ELEVATION = ["#141218", "#211F26", "#2B292F", "#36343B", "#3B383E"]
-_LIGHT_ELEVATION = ["#FFFBFE", "#F3EDF7", "#ECE6F0", "#E6E0E9", "#E0D6E3"]
+# Elevation tints follow the new navy / icy surfaces.
+_DARK_ELEVATION = ["#070C1D", "#111A33", "#182544", "#1F2F56", "#22304F"]
+_LIGHT_ELEVATION = ["#FFFFFF", "#E8EDFF", "#DDE5FA", "#D2DCF5", "#C6D4F2"]
 
 
 def _font_face() -> str:
@@ -163,9 +164,9 @@ def material_css(mood: str, selector: str = ":root") -> str:
     shadow_2 = ("0 2px 6px rgba(28,27,31,.10),0 1px 4px rgba(28,27,31,.08)"
                 if mood == "light" else
                 "0 2px 6px rgba(0,0,0,.24),0 1px 4px rgba(0,0,0,.22)")
-    shadow_3 = ("0 8px 20px rgba(103,80,164,.16),0 2px 8px rgba(28,27,31,.10)"
+    shadow_3 = ("0 8px 20px rgba(79,70,229,.22),0 2px 8px rgba(28,27,31,.10)"
                 if mood == "light" else
-                "0 6px 14px rgba(0,0,0,.26),0 2px 8px rgba(0,0,0,.20)")
+                "0 6px 18px rgba(34,211,238,.18),0 2px 8px rgba(0,0,0,.30)")
     color_block = f"""
   color-scheme:{'light' if mood == 'light' else 'dark'};
   --m3-primary:{v('primary')};
@@ -259,7 +260,7 @@ a:hover{text-decoration:underline}
 .m3-app-inner{max-width:1280px; margin:0 auto; padding:12px 22px; display:flex;
   align-items:center; gap:16px}
 .m3-logo{width:42px; height:42px; border-radius:14px; flex:0 0 auto;
-  background:linear-gradient(135deg,var(--m3-primary) 0%,var(--m3-tertiary) 100%);
+  background:linear-gradient(135deg,var(--m3-primary) 0%,var(--m3-secondary) 55%,var(--m3-tertiary) 100%);
   color:var(--m3-on-primary); font-weight:800; font-size:15px; letter-spacing:-.3px;
   display:flex; align-items:center; justify-content:center;
   box-shadow:var(--m3-shadow-2)}
@@ -275,7 +276,7 @@ a:hover{text-decoration:underline}
 .m3-h2{font-size:20px; font-weight:700; letter-spacing:-.2px; margin:30px 0 10px;
   display:flex; align-items:center; gap:10px}
 .m3-h2::before{content:""; width:4px; height:20px; border-radius:99px;
-  background:linear-gradient(180deg,var(--m3-primary),var(--m3-tertiary)); flex:0 0 auto}
+  background:linear-gradient(180deg,var(--m3-primary),var(--m3-secondary),var(--m3-tertiary)); flex:0 0 auto}
 .m3-h3{font-size:15px; font-weight:600; margin:18px 0 6px}
 .m3-lead{color:var(--m3-on-surface-variant); font-size:15px; max-width:880px;
   line-height:1.7; margin:6px 0 18px}
@@ -291,7 +292,7 @@ a:hover{text-decoration:underline}
   border-radius:var(--m3-shape-m); padding:18px 20px; box-shadow:var(--m3-shadow-1);
   position:relative; overflow:hidden}
 .m3-kpi::after{content:""; position:absolute; inset:0 0 auto 0; height:3px;
-  background:linear-gradient(90deg,var(--m3-primary),var(--m3-tertiary)); opacity:.85}
+  background:linear-gradient(90deg,var(--m3-primary),var(--m3-secondary),var(--m3-tertiary)); opacity:.9}
 .m3-kpi .v{font-size:30px; font-weight:780; line-height:1.05; letter-spacing:-.5px}
 .m3-kpi .l{color:var(--m3-on-surface-variant); font-size:11px; text-transform:uppercase;
   letter-spacing:.8px; margin-top:6px; font-weight:600}
@@ -351,13 +352,13 @@ textarea.m3-input{min-height:92px; resize:vertical; line-height:1.55}
   border:1px solid var(--m3-outline-variant); border-radius:var(--m3-shape-full);
   height:18px; min-width:150px; overflow:hidden}
 .m3-bar{height:18px; border-radius:var(--m3-shape-full);
-  background:linear-gradient(90deg,var(--m3-primary),var(--m3-tertiary))}
+  background:linear-gradient(90deg,var(--m3-primary),var(--m3-secondary),var(--m3-tertiary))}
 .m3-barval{position:absolute; right:8px; top:0; font-size:11px; line-height:18px; color:#fff; font-weight:700}
 .m3-progress-track{background:var(--m3-surface-container-high); border:1px solid var(--m3-outline-variant);
   border-radius:var(--m3-shape-full); height:12px; overflow:hidden}
 .m3-progress-fill{height:12px; border-radius:var(--m3-shape-full); width:0%;
-  background:linear-gradient(90deg,var(--m3-primary),var(--m3-tertiary));
-  transition:width .45s ease; box-shadow:0 0 12px color-mix(in srgb,var(--m3-primary) 60%,transparent)}
+  background:linear-gradient(90deg,var(--m3-primary),var(--m3-secondary),var(--m3-tertiary));
+  transition:width .45s ease; box-shadow:0 0 12px color-mix(in srgb,var(--m3-secondary) 60%,transparent)}
 .m3-progress-block{margin:16px 0 4px}
 .m3-barlabel{display:flex; justify-content:space-between; font-size:12.5px; color:var(--m3-on-surface-variant);
   margin-bottom:8px; font-weight:600; letter-spacing:.3px}

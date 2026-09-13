@@ -202,6 +202,9 @@ def analyze_citation_gap(ctx: AnalysisContext) -> Dict:
     )
     target_list = target_list[: cfg.top_n_recommendations * 2]
 
+    ghost = compute_ghost_citations(ctx, citations)
+    ingain = information_gain(ctx)
+
     return {
         "entity_summary": entity_summary,
         "rag_invisibility_index": invisibility_index,
@@ -209,4 +212,69 @@ def analyze_citation_gap(ctx: AnalysisContext) -> Dict:
         "invisible_doc_count": invis_docs,
         "off_page_targets": target_list,
         "citations": citations,
+        "ghost_citations": ghost,
+        "information_gain": ingain,
     }
+
+
+def compute_ghost_citations(ctx: AnalysisContext, citations: List[DocCitation]) -> Dict:
+    """E-E-A-T ghost citations: 73% of mentions don't name the brand.
+
+    A ghost citation = doc is highly relevant to a topic AND links/cites the
+    brand's domain (or answer-engine cited_urls include it) WITHOUT naming the
+    brand in text. Tracked per doc with evidence (no synthesis).
+    """
+    ghost_docs: List[Dict] = []
+    brand = ctx.config.target_brand.lower()
+    for c in citations:
+        if brand not in c.omitted:
+            continue  # named => not a ghost
+        doc = ctx.doc_by_id.get(c.doc_id) if hasattr(ctx, "doc_by_id") else None
+        if doc is None:
+            continue
+        html = (getattr(doc, "raw_html", "") or "").lower()
+        doms = [d.lower() for d in (ctx.config.entity_domain_map().get(ctx.config.target_brand, []) or [])]
+        domain_hit = any(d and d in html for d in doms)
+        cited = ((getattr(doc, "metadata", {}) or {}).get("cited_urls", []) or [])
+        cited_hit = any(any(d and d in (u or "").lower() for d in doms) for u in cited)
+        per = ctx.doc_topic_max_sim.get(c.doc_id, {})
+        top = max(per, key=per.get) if per else ""
+        if (domain_hit or cited_hit) and top:
+            ghost_docs.append({"doc_id": c.doc_id, "url": c.url, "topic": top,
+                               "evidence": "domain-link-without-name" if domain_hit else "answer-cited-without-name"})
+    return {"ghost_count": len(ghost_docs), "ghost_docs": ghost_docs[:50],
+            "method": "domain/citation present but brand unnamed in high-relevance docs"}
+
+
+def information_gain(ctx: AnalysisContext) -> Dict:
+    """Information Gain scoring: original research (86.7) > structured data (75.8).
+
+    Scores each doc 0-100 from real signals: token length (depth), schema.org
+    presence, tables/lists, quotes/stats, outbound citations. Brand's mean vs
+    competitor mean exposes the originality gap.
+    """
+    import re as _re
+    brand = ctx.config.target_brand
+    docs = ctx.docs
+    patterns, alias = NER.build_mention_patterns(
+        ctx.config.all_entities(), ctx.config.entity_alias_map())
+    scores = {}
+    for doc in docs:
+        html = (doc.raw_html or "").lower()
+        text = doc.text or ""
+        s = 0.0
+        s += min(30.0, len(text) / 1000.0)                       # depth (30)
+        if "application/ld+json" in html or "schema.org" in html:
+            s += 15.0                                            # structured (15)
+        s += min(15.0, 3.0 * len(_re.findall(r"<table|<ul|<ol", html)))  # data (15)
+        s += min(20.0, 2.0 * len(_re.findall(r"\d+(?:\.\d+)?%", text)))  # stats (20)
+        s += min(20.0, 2.0 * len(_re.findall(r"https?://", html)))      # cites (20)
+        scores[doc.doc_id] = round(min(100.0, s), 1)
+    def _mean(ids):
+        vals = [scores[i] for i in ids if i in scores]
+        return round(sum(vals) / len(vals), 1) if vals else 0.0
+    brand_ids = [d.doc_id for d in docs
+                 if NER.find_mentions(d.text, patterns, alias).get(brand, 0) > 0]
+    return {"per_doc": scores, "brand_mean": _mean(brand_ids),
+            "corpus_mean": _mean(list(scores)),
+            "method": "depth 30 + structured 15 + data-tables 15 + stats 20 + citations 20"}
