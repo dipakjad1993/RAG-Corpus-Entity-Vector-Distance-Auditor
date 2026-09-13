@@ -442,6 +442,15 @@ uvicorn ragevda.api:app --host 127.0.0.1 --port 9000
 # OpenAPI docs at /docs; OTEL tracing when OTEL_EXPORTER_OTLP_ENDPOINT is set
 ```
 
+### Deploy on Render (Docker)
+
+The `Dockerfile` is Render-ready: it pre-caches all models at build time,
+runs as non-root, binds `0.0.0.0:$PORT` automatically, and serves the Flask UI
+via **gunicorn** (1 worker × 8 threads — workers must stay 1 because audits,
+the scheduler, and the live job cache live in-process). Set `HF_TOKEN` in the
+Render dashboard to silence HF rate-limit warnings and speed up cold builds;
+set `RAGEVDA_API_KEY` to require API-key auth on `/run`.
+
 ### Python API
 
 ```python

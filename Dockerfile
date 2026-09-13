@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt pyproject.toml README.md ./
 COPY ragevda/ ./ragevda/
 RUN pip install --upgrade pip && pip install -r requirements.txt \
+    && pip install gunicorn \
     && python -m spacy download en_core_web_sm
 
 # Pre-cache modern default embedding (nomic, Apache-2.0, CPU-fast) + legacy
@@ -40,4 +41,8 @@ EXPOSE 9000
 VOLUME ["/app/web_output"]
 # Render/Heroku-style platforms inject $PORT and require 0.0.0.0; local docker
 # stays loopback-only unless RAGEVDA_BIND is set explicitly.
-CMD ["sh", "-c", "if [ -n \"$PORT\" ]; then HOST=0.0.0.0; else HOST=${RAGEVDA_BIND:-127.0.0.1}; fi; python -m ragevda.cli web --host \"$HOST\" --port \"${PORT:-9000}\""]
+# Production serving: gunicorn (1 worker x 8 threads — audits + scheduler +
+# in-memory job cache live in-process, so workers MUST stay 1; threads handle
+# concurrent polling). Falls back to the Flask dev server when gunicorn is
+# absent (local `cli web` always uses the dev server, which is fine there).
+CMD ["sh", "-c", "if [ -n \"$PORT\" ]; then HOST=0.0.0.0; else HOST=${RAGEVDA_BIND:-127.0.0.1}; fi; P=${PORT:-9000}; if python -c \"import gunicorn\" 2>/dev/null; then exec gunicorn 'ragevda.webapp:create_app()' --bind \"$HOST:$P\" --workers 1 --threads 8 --timeout 600 --access-logfile -; else exec python -m ragevda.cli web --host \"$HOST\" --port \"$P\"; fi"]
