@@ -1,51 +1,253 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>RAG-EVDA — AI Search Visibility Auditor</title>
-<style>__M3_STYLE__</style>
-<link rel="stylesheet" href="/static/app.css"/>
-</head>
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#141218" id="metaTheme">
+<meta name="description" content="RAG-EVDA — enterprise local vector intelligence for AI-search visibility. Zero-cost, verified, real-time.">
+<title>RAG-EVDA — RAG Corpus Entity & Vector Distance Auditor</title>
+<style>
+__M3_STYLE__
+</style>
+<link rel="stylesheet" href="/static/app.css"></head>
 <body>
-<header class="topbar"><h1>RAG-EVDA</h1><p>Enterprise AI-search visibility audit (local, verified)</p></header>
-<main class="wrap">
-  <section class="card">
-    <h2>1 · Target</h2>
-    <form id="audit-form">
-      <label>Brand <input name="target_brand" required placeholder="e.g. Acme Corp"/></label>
-      <label>Industry topics (comma separated) <input name="industry_topics" required placeholder="topic one, topic two"/></label>
-      <label>Competitors (comma separated) <input name="competitor_entities" required placeholder="Rival A, Rival B"/></label>
-      <label>Crawl depth <input name="crawl_depth" value="20"/></label>
-      <label>Harvester
-        <select name="harvester">
-          <option value="multi">multi (SearXNG + Brave/Tavily/Exa, recommended)</option>
-          <option value="searxng">searxng</option>
-          <option value="duckduckgo">duckduckgo (fallback only)</option>
-          <option value="file">file</option>
-        </select>
-      </label>
-      <label>Answer harvester
-        <select name="answer_harvester">
-          <option value="off">off</option><option value="multi">multi</option>
-          <option value="tavily">tavily</option><option value="exa">exa</option><option value="brave">brave</option>
-        </select>
-      </label>
-      <button type="submit">Run audit</button>
-    </form>
-  </section>
-  <section class="card">
-    <h2>2 · Progress</h2>
-    <div id="job">No job yet.</div>
-    <div class="bar"><div id="bar" style="width:0%"></div></div>
-    <pre id="logs"></pre>
-  </section>
-  <section class="card">
-    <h2>3 · Outputs (consolidated)</h2>
-    <p>report.json (machine) · dashboard.html (human) · corpus.duckdb + drift_timeseries.duckdb (analyst) · rag_content_brief.md · llms.txt patch (action).</p>
-    <div id="outputs"></div>
-  </section>
-</main>
+<div class="m3-app-bar"><div class="m3-app-inner">
+  <div class="m3-logo">EV</div>
+  <div class="m3-title">RAG-EVDA
+    <small>RAG Corpus Entity &amp; Vector Distance Auditor · Enterprise 2026</small>
+  </div>
+  <nav class="m3-nav">
+    <a href="/" class="on">Audit</a>
+    <a href="/history">History &amp; Trends</a>
+    <a href="/schedules">Schedules</a>
+  </nav>
+  <button class="m3-btn outlined" id="themeBtn" title="Toggle dark / light (Material 3)">Theme</button>
+</div></div>
+
+<div class="m3-container">
+<div class="hero">
+  <h1>AI-search visibility, <span class="grad">measured in vector space.</span></h1>
+  <p>Local, zero-cost, fully verified vector intelligence. Paste any brand or website URL, hit
+  <b>Auto-Detect Deep Research</b> — the tool performs live multi-source reconnaissance and pre-fills
+  <b>all 11 enterprise inputs</b> with real, verified, real-time data. Then <b>Run Full Audit</b> executes
+  all <b>10 micro-engines</b> (harvest → embeddings → NER graphs → citation gaps → chunking → drift →
+  LLM briefs → sentiment → synthetic queries → token density) and <b>Show Outputs</b> delivers the
+  in-depth competitive report. No OpenAI / Ahrefs / Semrush keys. 2026 Pixel type · Material 3 Expressive · fluid navigation.</p>
+  <div class="trust-row">
+    <span class="m3-chip"><b>100%</b> local &amp; zero-cost</span>
+    <span class="m3-chip"><b>11</b> enterprise inputs</span>
+    <span class="m3-chip"><b>10</b> micro-engines</span>
+    <span class="m3-chip"><span class="verified-badge">VERIFIED</span> real-time evidence</span>
+    <span class="m3-chip"><span class="estimate-badge">ESTIMATE</span> engine/poisoning/queries = triage only</span>
+    <span class="m3-chip"><b>M3</b> dark / light perfected</span>
+  </div>
+  <div class="stat-strip" id="heroStats">
+    <div class="m3-kpi"><div class="v" id="hsTopics">—</div><div class="l">Topics detected</div></div>
+    <div class="m3-kpi"><div class="v" id="hsComps">—</div><div class="l">Competitors mapped</div></div>
+    <div class="m3-kpi"><div class="v" id="hsDepth">—</div><div class="l">Crawl depth</div></div>
+    <div class="m3-kpi"><div class="v" id="hsLocality">—</div><div class="l">Locality signal</div></div>
+  </div>
+</div>
+
+<div class="step-wrap" role="tablist" aria-label="Audit stages">
+  <div class="step active" id="step1" role="tab" tabindex="0" onclick="goStep('inputs')"><span class="num">1</span> Inputs · 11 fields</div>
+  <div class="step-sep"></div>
+  <div class="step" id="step2" role="tab" tabindex="0" onclick="goStep('features')"><span class="num">2</span> Deep Analysis · 10 engines</div>
+  <div class="step-sep"></div>
+  <div class="step" id="step3" role="tab" tabindex="0" onclick="goStep('outputs')"><span class="num">3</span> Outputs · verified report</div>
+</div>
+
+<div id="page-inputs" class="page active">
+<form id="auditForm">
+  <div class="card">
+    <div class="field-head"><div class="field-ico"></div>
+      <label class="m3-fieldlabel" style="margin:0">1) Target Brand Name / Website URL — Deep-Research Entry Point</label>
+      <span class="field-num">INPUT 01 · REQUIRED</span><span class="fill-badge" id="fb-brand">AUTO-FILLED</span></div>
+    <div class="hint">Paste a brand <b>or any website / URL</b> (e.g. <span class="m3-code">https://yoursite.com</span>) then click
+      <b>Auto-Detect Deep Research</b>. The tool fetches the live homepage in real time, scans robots / sitemap / about / products,
+      reads schema.org JSON-LD + feeds + headings, runs budgeted live web searches for topics / competitors / HQ country, detects
+      language + local Ollama / SearXNG services, scores search intent, and <b>fills all 11 input groups below</b> with verified live evidence. Nothing is invented.</div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input type="text" name="target_brand" placeholder="YourBrand or https://yoursite.com" required class="m3-input" style="flex:1;min-width:260px">
+      <button type="button" class="m3-btn" id="probeBtn">Auto-Detect Deep Research</button>
+    </div>
+    <div id="probeStatus" class="hint" style="margin-top:8px;display:none"></div>
+    <div id="probeStages" class="hint" style="display:none; margin-top:6px"></div>
+  </div>
+
+  <div class="bento">
+  <div class="card span7">
+    <div class="field-head"><div class="field-ico"></div>
+      <label class="m3-fieldlabel" style="margin:0">2) Target Industry Topics / Concepts</label>
+      <span class="field-num">INPUT 02 · 3–10+</span></div>
+    <div class="hint">High-value contextual topics &amp; seed keywords auto-extracted from live headings, meta keywords, JSON-LD categories, nav labels, news-sitemap headlines &amp; real search titles. One per line or comma-separated — no limit.</div>
+    <textarea name="industry_topics" class="m3-input" placeholder="your primary industry topic&#10;your secondary topic&#10;your tertiary topic" required></textarea>
+  </div>
+
+  <div class="card span5">
+    <div class="field-head"><div class="field-ico"></div>
+      <label class="m3-fieldlabel" style="margin:0">3) Competitor Entities</label>
+      <span class="field-num">INPUT 03 · 2–5+</span></div>
+    <div class="hint">Direct rivals mined from on-page comparisons + live “competitors / alternatives / rivals” searches, sanitized against generic words. One per line.</div>
+    <textarea name="competitor_entities" class="m3-input" placeholder="CompetitorA&#10;CompetitorB&#10;CompetitorC" required></textarea>
+  </div>
+  </div>
+
+  <div class="m3-field-grid">
+    <div class="card">
+      <div class="field-head"><div class="field-ico">≡</div>
+        <label class="m3-fieldlabel" style="margin:0">4) Crawl Depth Parameter</label>
+        <span class="field-num">INPUT 04</span></div>
+      <div class="hint">Pages / results per query (Top 50 / Top 100). Auto-Detect scales this from real sitemap size &amp; news velocity.</div>
+      <input type="number" name="crawl_depth" value="50" min="1" max="200" class="m3-input">
+    </div>
+    <div class="card">
+      <div class="field-head"><div class="field-ico"></div>
+        <label class="m3-fieldlabel" style="margin:0">5) Target Locality / Geo Target</label>
+        <span class="field-num">INPUT 05 · OPTIONAL</span></div>
+      <div class="hint">Region / country code (US, UK, Detroit). Detected from geo meta, hreflang, currency, city &amp; TLD signals.</div>
+      <input type="text" name="locality" placeholder="US" class="m3-input">
+    </div>
+  </div>
+
+  <div class="card">
+    <button type="button" class="m3-adv" id="advToggle"> Enterprise inputs 6–11 + engine tuning (auto-filled — review &amp; expand)</button>
+    <div id="advPanel" style="margin-top:14px;">
+      <div class="m3-field-grid">
+        <div>
+          <label class="m3-fieldlabel">Harvester</label>
+          <select name="harvester" class="m3-input">
+            <option value="duckduckgo" selected>DuckDuckGo (live, free)</option>
+            <option value="searxng">SearXNG (self-hosted)</option>
+            <option value="file">Local corpus folder</option>
+          </select>
+          <label class="m3-check" style="margin-top:10px">
+            <input type="checkbox" name="prefer_searxng"> Prefer SearXNG (use my SearXNG URL as the primary live search when set)
+          </label>
+        </div>
+      </div>
+      <div class="m3-field-grid">
+        <div>
+          <label class="m3-fieldlabel">SearXNG base URL</label>
+          <input type="text" name="searxng_base_url" placeholder="http://localhost:8080" class="m3-input">
+        </div>
+      </div>
+      <div style="margin-top:12px; display:flex; gap:20px; align-items:center; flex-wrap:wrap">
+        <label class="m3-check"><input type="checkbox" name="auto_threshold" checked> Auto-calibrate relevance threshold (recommended)</label>
+        <div>
+          <label class="m3-fieldlabel">Manual threshold (if unchecked)</label>
+          <input type="number" name="high_relevance_threshold" value="0.70" min="0.1" max="0.95" step="0.05" style="width:110px;" class="m3-input">
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <label class="m3-fieldlabel">spaCy model</label>
+        <input type="text" name="spacy_model" value="en_core_web_sm" class="m3-input">
+      </div>
+      <div class="m3-field-grid" style="margin-top:12px">
+        <div>
+          <label class="m3-fieldlabel">Search intent</label>
+          <select name="search_intent" class="m3-input">
+            <option value="informational" selected>Informational</option>
+            <option value="commercial">Commercial</option>
+            <option value="navigational">Navigational</option>
+            <option value="transactional">Transactional</option>
+            <option value="comparison">Comparison</option>
+            <option value="local">Local</option>
+          </select>
+        </div>
+        <div>
+          <label class="m3-fieldlabel">AI-engine matrix (comma-separated)</label>
+          <input type="text" name="engine_matrix" value="Google AI Overviews, SearchGPT, Gemini, Perplexity, Bing Copilot" class="m3-input">
+        </div>
+      </div>
+      <div class="m3-field-grid" style="margin-top:12px">
+        <div>
+          <label class="m3-fieldlabel">7) Custom Entity Weighting / Ontology Mapping</label>
+          <div class="hint" style="margin:2px 0 8px;font-size:12px;">One per line: <code class="m3-code">Entity|weight</code> (weight &gt; 0, default 1) then <code class="m3-code">Entity|alias1,alias2</code> for sub-brands / product / patent names.</div>
+          <textarea name="entity_weighting" class="m3-input" placeholder="AcmeCorp|1.5&#10;GlobexInc|1.0&#10;AcmeCorp Pro|AcmeCorp"></textarea>
+        </div>
+        <div>
+          <label class="m3-fieldlabel">6) Query Templates for Search Intent (format: intent|pattern)</label>
+          <div class="hint" style="margin:2px 0 8px;font-size:12px;">One per line, <code class="m3-code">{topic}</code> / <code class="m3-code">{brand}</code> substituted, e.g. <code class="m3-code">transactional|best {topic} software</code>.</div>
+          <textarea name="query_templates" class="m3-input" placeholder="transactional|best {topic} options&#10;comparison|{brand} vs alternatives"></textarea>
+        </div>
+      </div>
+      <div class="m3-field-grid" style="margin-top:12px">
+        <div>
+          <label class="m3-fieldlabel">10) Search-Engine Scraping Footprints (SERP snippet types)</label>
+          <div class="hint" style="margin:2px 0 8px;font-size:12px;">Specific source URLs surfaced by an AI engine, ingested separately. Format: <code class="m3-code">engine|label|url</code>.</div>
+          <textarea name="serp_footprints" class="m3-input" placeholder="Google AI Overviews|industry survey|https://research.example.com/path&#10;Perplexity|guide|https://guide.example.com/path"></textarea>
+        </div>
+        <div>
+          <label class="m3-fieldlabel">8) Historical Ground-Truth Corpora (internal brand docs)</label>
+          <div class="hint" style="margin:2px 0 8px;font-size:12px;">PDF / whitepaper / Markdown file paths so the tool compares Internal Brand Perception Vector vs Web RAG Vector. One per line.</div>
+          <textarea name="corpus_files" class="m3-input" placeholder="./corpus/whitepaper.pdf&#10;./corpus/product-specs.txt"></textarea>
+        </div>
+      </div>
+      <div class="m3-field-grid" style="margin-top:12px">
+        <div>
+          <label class="m3-fieldlabel">11) Competitor Content Change Logs — RSS / sitemap feeds</label>
+          <div class="hint" style="margin:2px 0 8px;font-size:12px;">Competitor / industry feeds ingested in near-real-time for freshness.</div>
+          <textarea name="content_feeds" class="m3-input" placeholder="https://competitor.com/feed.xml&#10;https://competitor.com/sitemap.xml"></textarea>
+        </div>
+        <div>
+          <label class="m3-fieldlabel">11b) Local corpus directory (ground-truth folder)</label>
+          <div class="hint" style="margin:2px 0 8px;font-size:12px;">Alternative to per-file list — point at an entire internal docs folder.</div>
+          <input type="text" name="corpus_dir" class="m3-input" placeholder="./corpus/ground-truth">
+        </div>
+      </div>
+      <div class="m3-field-grid" style="margin-top:12px">
+        <div>
+          <label class="m3-fieldlabel">Synthetic query count</label>
+          <input type="number" name="synthetic_query_count" value="12" min="0" max="100" class="m3-input">
+        </div>
+        <div>
+          <label class="m3-fieldlabel">Chunk / density settings</label>
+          <div style="display:flex;gap:8px">
+            <input class="m3-input" type="number" name="chunk_tokens" value="512" min="64" max="8192" title="Chunk tokens" style="width:110px">
+            <input class="m3-input" type="number" name="target_entity_density" value="0.015" step="0.001" min="0" max="1" title="Target entity density" style="width:110px">
+            <input class="m3-input" type="number" name="top_k_retrieval" value="5" min="1" max="50" title="Top-k retrieval" style="width:90px">
+          </div>
+          <div class="hint" style="margin:4px 0 0;font-size:11px;">chunk tokens · target density · top-k</div>
+        </div>
+      </div>
+      <div class="m3-field-grid" style="margin-top:12px">
+        <div>
+          <label class="m3-fieldlabel">9) Target Embedding Model Selection</label>
+          <input type="text" name="embedding_model" value="sentence-transformers/all-MiniLM-L6-v2" class="m3-input">
+          <div class="hint" style="margin:4px 0 0;font-size:11px;">Pick the embedding architecture matching the AI engine's vector space (e.g. <code class="m3-code">bge-large-en-v1.5</code>, <code class="m3-code">all-MiniLM-L6-v2</code>). Operator supplies a local model.</div>
+        </div>
+        <div>
+          <label class="m3-fieldlabel">Ollama model (optional local LLM)</label>
+          <input type="text" name="ollama_model" value="llama3" class="m3-input">
+          <div class="hint" style="margin:4px 0 0;font-size:11px;">Ollama base URL:</div>
+          <input type="text" name="ollama_base_url" placeholder="http://localhost:11434" class="m3-input">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="run-bar">
+    <button type="submit" class="m3-btn" id="runBtn">Run Full Audit — 10 engines</button>
+    <button type="button" class="m3-btn tonal" id="outputsBtn" style="display:none">Show Outputs</button>
+    <span class="hint" id="status" style="margin:0"></span>
+  </div>
+
+  <div class="m3-progress-block" id="barwrap" style="display:none">
+    <div class="m3-barlabel"><span id="stage">Initializing…</span><span><span id="pct">0%</span> · <span id="timer">00:00</span></span></div>
+    <div class="m3-progress-track"><div class="m3-progress-fill" id="barfill"></div></div>
+  </div>
+
+  <div class="m3-console" id="console" style="display:none" aria-live="polite"></div>
+</form>
+</div>
+
+<div id="page-features" class="page"></div>
+<div id="page-outputs" class="page"></div>
+<div id="result"></div>
+<div id="toasts"></div>
+<footer class="ent-footer">
+  <span><b>RAG-EVDA Enterprise 2026</b> · Material 3 Expressive · 2026 Pixel type (Google Sans / Roboto Flex) · zero-cost local inference</span>
+  <span>Dark / light is fully token-driven — every surface re-renders on toggle · <a href="/history">History</a> · <a href="/schedules">Schedules</a></span>
+</footer>
+
 <script src="/static/app.js"></script>
-</body>
-</html>
+</div></body></html>
