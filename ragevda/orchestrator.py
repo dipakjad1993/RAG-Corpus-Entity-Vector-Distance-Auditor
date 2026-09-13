@@ -90,7 +90,7 @@ def _harvest_or_fallback(config, queries, depth) -> tuple:
         # Paid-API fan-out first (Brave/Tavily/Exa), then SearXNG, then DDG.
         from .harvester.paid_search import multi_search
         from .harvester.base import new_document
-        from .harvester.cleaner import clean_html
+        from .harvester.cleaner import extract_text
         paid = multi_search(queries[0] if queries else "", config, depth) if queries else []
         docs = []
         if paid:
@@ -107,7 +107,10 @@ def _harvest_or_fallback(config, queries, depth) -> tuple:
                         r = c.get(url)
                         if r.status_code != 200:
                             continue
-                        text = clean_html(r.text) if hasattr(clean_html, "__call__") else snippet
+                        try:
+                            text = extract_text(r.text, url=url) or snippet
+                        except Exception:  # noqa: BLE001
+                            text = snippet
                         docs.append(new_document(url, title or url, "web",
                                                  queries[0] if queries else "",
                                                  text=text or snippet,
