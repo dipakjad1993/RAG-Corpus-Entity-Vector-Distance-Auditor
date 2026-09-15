@@ -1,0 +1,18 @@
+# RAG-EVDA LITE (Render free 512MB) — CPU-only, no heavy ML at boot.
+# NOTE: NO torch (installed CPU-only in Dockerfile.render), NO transformers,
+# NO pandas, NO reportlab, NO faiss, NO fastapi/uvicorn on free.
+-e .
+flask>=3.0.0
+gunicorn
+sentence-transformers>=2.3.0
+spacy>=3.7.0
+numpy<2.0
+scikit-learn>=1.3.0
+duckdb>=0.10.0
+trafilatura>=1.6.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+httpx>=0.27.0
+pyyaml>=6.0.0
+ddgs>=4.0.0
+pydantic>=2.0.0

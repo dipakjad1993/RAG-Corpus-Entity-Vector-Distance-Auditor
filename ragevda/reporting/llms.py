@@ -64,6 +64,35 @@ def build_mcp_manifest(report: Dict, config) -> Dict:
             "lighthouse_agentic": "13.3-ready: get_pricing/check_stock exposed"}
 
 
+def build_webmcp(report: Dict, config) -> Dict:
+    """WebMCP manifest (Chrome 149 origin trial, navigator.modelContext).
+
+    Google Search Central (2026): llms.txt has zero ranking/AIO effect —
+    keep it lean for Cursor/Claude Code only. The PRIORITY surface is
+    /.well-known/webmcp.json + /mcp.json + /agent.json (declarative tools
+    -> imperative modelContext calls). This manifest is WebMCP-ready.
+    """
+    agent = build_agent_json(report, config)
+    base = agent.get("base_url", "https://example.com")
+    return {
+        "webmcp_version": "1.0",
+        "site": config.target_brand,
+        "base_url": base,
+        "contexts": [
+            {"name": "catalog", "tools": agent["tools"],
+             "declarative": True, "imperative": "navigator.modelContext.callTool"},
+        ],
+        "endpoints": {
+            "webmcp": "/.well-known/webmcp.json",
+            "mcp": "/mcp.json",
+            "agent": "/agent.json",
+            "llms_txt": "/llms.txt",
+        },
+        "verification_score": report.get("meta", {}).get("verification_score", 0),
+        "note": "llms.txt kept lean for coding agents only; WebMCP is the agentic surface",
+    }
+
+
 def write_llms_outputs(out_dir: str, report: Dict, config) -> Dict[str, str]:
     os.makedirs(out_dir, exist_ok=True)
     paths = {}
@@ -86,4 +115,13 @@ def write_llms_outputs(out_dir: str, report: Dict, config) -> Dict[str, str]:
     with open(p4, "w", encoding="utf-8") as fh:
         json.dump(build_mcp_manifest(report, config), fh, indent=2)
     paths["mcp.json"] = p4
+    # WebMCP-first (Chrome 149): /.well-known/webmcp.json + /mcp.json + /agent.json
+    p5 = os.path.join(wk, "webmcp.json")
+    with open(p5, "w", encoding="utf-8") as fh:
+        json.dump(build_webmcp(report, config), fh, indent=2)
+    paths["webmcp.json"] = p5
+    p6 = os.path.join(out_dir, "mcp.json")
+    with open(p6, "w", encoding="utf-8") as fh:
+        json.dump(build_mcp_manifest(report, config), fh, indent=2)
+    paths["mcp-root.json"] = p6
     return paths

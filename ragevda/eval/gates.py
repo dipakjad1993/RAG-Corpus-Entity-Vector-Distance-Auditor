@@ -52,6 +52,39 @@ def run_eval_gates(report: Dict, config) -> Dict:
           "context_precision": _get(config, "eval_context_precision_min", 0.70),
           "context_recall": _get(config, "eval_context_recall_min", 0.70)}
     passed = {k: (v >= th[k]) for k, v in gates.items()}
-    return {"metrics": gates, "thresholds": th, "passed": passed,
-            "gate_pass": all(passed.values()),
-            "method": "offline RAGAS-style gates from real report evidence"}
+    out = {"metrics": gates, "thresholds": th, "passed": passed,
+           "gate_pass": all(passed.values()),
+           "method": "offline RAGAS-style gates from real report evidence"}
+    # Auto-correction loop (Profound FactCheck-style): attach concrete rewrite
+    # suggestions for every failing gate instead of only failing the build.
+    try:
+        from .factcheck import factcheck_fixes
+        fc = factcheck_fixes(report, config)
+        fixes = list(fc.get("fixes", []) or [])
+        for k, ok in passed.items():
+            if not ok:
+                fixes.append({
+                    "type": f"gate-fail:{k}",
+                    "evidence": f"{k}={gates[k]} below threshold {th[k]}",
+                    "suggestion": _fix_for_gate(k, report, config),
+                })
+        out["fixes"] = fixes
+        out["fix_count"] = len(fixes)
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
+def _fix_for_gate(gate: str, report: Dict, config) -> str:
+    brand = getattr(config, "target_brand", "the brand")
+    if gate == "faithfulness":
+        return ("Resolve poisoning contradictions + ghost citations (see advanced.eval.fixes), "
+                f"publish a canonical correction page for {brand} with Organization JSON-LD.")
+    if gate == "answer_relevancy":
+        return (f"Raise {brand} token density: question H2 + 20-40 word answer in first 50 words, "
+                "spec table, numbers, third-party corroboration (85% of mentions are off-domain).")
+    if gate == "context_precision":
+        return ("Tighten retrieval: raise per-topic thresholds, prune low-relevance docs, "
+                "add BM25-friendly exact brand strings to canonical pages.")
+    return ("Expand coverage: publish one page per uncovered topic (no mass fan-out pages — "
+            "scaled abuse), earn one UGC + one press citation per topic.")

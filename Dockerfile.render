@@ -1,0 +1,38 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HUB_OFFLINE=1 \
+    RAGEVDA_WORKERS=1 \
+    RAGEVDA_ALLOW_FALLBACK=1 \
+    RAGEVDA_DISABLE_RERANKER=1 \
+    RAGEVDA_LITE=1 \
+    MALLOC_ARENA_MAX=2 \
+    OMP_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    TOKENIZERS_PARALLELISM=false \
+    MPLBACKEND=Agg
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends libxml2 libxslt1.1 \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.render.txt pyproject.toml README.md ./
+COPY ragevda/ ./ragevda/
+RUN pip install --upgrade pip \
+ && pip install --index-url https://download.pytorch.org/whl/cpu torch==2.3.0+cpu \
+ && pip install -r requirements.render.txt \
+ && pip install gunicorn \
+ && python -m spacy download en_core_web_sm \
+ && python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')" \
+ && rm -rf /root/.cache/pip
+
+COPY config.example.yaml ./
+
+RUN useradd -m -u 10001 ragevda && mkdir -p /app/web_output && chown -R ragevda:ragevda /app
+USER ragevda
+
+EXPOSE 9000
+CMD ["sh","-c","P=${PORT:-9000}; exec gunicorn 'ragevda.webapp:create_app()' --bind 0.0.0.0:$P --workers 1 --threads 2 --timeout 120 --max-requests 50 --max-requests-jitter 10 --preload --access-logfile -"]

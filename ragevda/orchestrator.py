@@ -222,6 +222,10 @@ def _dedupe(docs: List, config) -> "tuple[List, int]":
 
 def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
     """Execute the full audit. Returns the consolidated report dict."""
+    try:
+        config.apply_env_overrides()
+    except Exception:  # noqa: BLE001
+        pass
     logger.info("RAG-EVDA v%s starting audit for brand '%s'",
                 __version__, config.target_brand)
     import uuid
@@ -518,6 +522,20 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
         write_llms_outputs(out_dir, report, config)
     except Exception as exc:  # noqa: BLE001
         logger.warning("llms.txt/MCP outputs skipped: %s", exc)
+    # Closed-loop execution bundle: action_plan + wp_drafts.
+    try:
+        from .reporting.action_plan import write_action_plan
+        write_action_plan(out_dir, report, config)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("action_plan outputs skipped: %s", exc)
+    # Looker Studio connector bundle (stdlib csv only — LITE-safe).
+    try:
+        from .reporting.looker import write_looker_bundle
+        # visibility/funnel live under advanced only after run_advanced;
+        # write best-effort (empty table when gates fail-open).
+        write_looker_bundle(out_dir, report, config)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("looker bundle skipped: %s", exc)
     # Eval gates (RAGAS-style): fail-loud scores inside report["advanced"]["eval"].
     try:
         from .eval.gates import run_eval_gates

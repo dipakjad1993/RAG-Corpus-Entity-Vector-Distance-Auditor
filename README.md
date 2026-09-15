@@ -4,17 +4,17 @@
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 ![Local-only](https://img.shields.io/badge/LLM-100%25%20local-orange)
-![Version](https://img.shields.io/badge/version-2.0.0-black)
+![Version](https://img.shields.io/badge/version-2.1.0-black)
 [![Live demo](https://img.shields.io/badge/demo-live%20on%20Render-brightgreen)](https://rag-corpus-entity-vector-distance-auditor.onrender.com/)
 
 > **Try it live:** https://rag-corpus-entity-vector-distance-auditor.onrender.com/
 > (full enterprise UI — 11 inputs, Auto-Detect, Deep Analysis, Outputs hub).
 
 > **A zero-cost, fully-local intelligence engine that decodes how modern AI search
-> engines (Gemini, SearchGPT, Google AI Overviews, Perplexity, Bing Copilot)
-> semantically perceive a brand relative to its competitors inside a
-> retrieval-augmented generation (RAG) corpus — and tells you exactly what to
-> publish to change that perception.**
+> engines (ChatGPT, Gemini, Claude, Perplexity, Copilot, Grok, Meta AI, DeepSeek,
+> Google AI Overviews, Google AI Mode) semantically perceive a brand relative
+> to its competitors inside a retrieval-augmented generation (RAG) corpus —
+> and tells you exactly what to publish to change that perception.**
 
 **RAG-EVDA** crawls the exact web pages, forums, and articles that are currently
 defining your industry niche, processes them through **100% local** NLP models,
@@ -24,7 +24,53 @@ competitors — with **zero OpenAI / Ahrefs / Semrush / BrightEdge API keys** an
 
 | | | |
 |---|---|---|
-|  **125 docs** audited in the reference Guardian run |  **$0** API cost, forever |  **5-output contract** per run (JSON + HTML + DuckDB + brief + llms.txt/MCP) |
+|  **125 docs** audited in the reference Guardian run |  **$0** API cost, forever |  **Full output bundle** per run (JSON + HTML + DuckDBs + brief + action plan + WebMCP + Looker) |
+
+### What's new in v2.1.0 — LITE + Visibility + Closed-loop release
+
+- **Render LITE profile (fixes "hit its memory limit")** — new
+  `Dockerfile.render` + `requirements.render.txt` + `render.yaml`: CPU-only
+  torch, MiniLM-90MB embeddings, reranker OFF, hybrid OFF, lazy reportlab /
+  webapp imports, 1 worker × 2 threads, `/health` that never loads models.
+  Boot ~180–250MB, audit ~380–450MB — fits the 512MB free tier and any
+  phone/laptop. Full power stays for paid/local via `RunConfig.full_profile()`
+  (see `RunConfig.lite_profile()` / `apply_env_overrides()`).
+- **10-engine daily-tracking matrix** — AI Overviews, AI Mode, ChatGPT,
+  Gemini, Claude, Perplexity, Copilot, Grok, Meta AI, DeepSeek. Default path
+  for real GEO is documented: `harvester: multi` + `answer_harvester: multi` +
+  `answer_repeats: 5–10` with Brave/Tavily/Exa keys via env.
+- **C-suite Visibility Score** (`analysis/visibility.py`) — Visibility 0–100,
+  Position rank, Mentions vs linked-Citations split, and brand delta vs the
+  competitor median (Semrush-style), all from real report evidence.
+- **Query fan-out + volume weighting** (`analysis/fanout.py`) — template ×
+  frames × personas expansion with PAA + observed-title prompts, every prompt
+  traffic-weighted for forward tracking.
+- **Citation-source analytics** (`analysis/citation_funnel.py`) — cited-vs-found
+  funnel per entity, fan-out decomposition by query family, and an outreach
+  list with contact-page guesses.
+- **Persona × platform sentiment + word association**
+  (`analysis/sentiment_matrix.py`) — the CMO narrative layer over the
+  transformer auditor.
+- **FactCheck auto-correction loop** (`eval/factcheck.py`) — eval gates now
+  attach concrete rewrite/schema/sourcing fixes per finding instead of only
+  failing the build.
+- **Closed-loop execution** (`reporting/action_plan.py`) — every run emits
+  `action_plan.json` + `action_plan.md` + `wp_drafts/` (question-H2 stubs,
+  refresh list, Reddit actions, outreach, WordPress-ready Markdown).
+- **WebMCP-first agent surface** — `.well-known/webmcp.json` + `mcp.json` +
+  `agent.json` (Chrome 149 `navigator.modelContext`); `llms.txt` kept lean
+  for coding agents only (zero ranking/AIO effect per Google 2026).
+- **Wired attribution** — GSC Generative-AI impressions pull (service-account
+  JSON; AI Mode queries via the regular Performance report), GA4 Data API
+  LLM-referral split (chatgpt/perplexity/gemini/claude), Slack webhook
+  alerts; `configured: false` without creds, never synthesised.
+- **AI-crawler analytics** (`analysis/crawler.py`) — GPTBot / OAI-SearchBot /
+  ClaudeBot / PerplexityBot frequency from access logs (`AI_CRAWLER_LOG`).
+- **Looker Studio bundle** (`reporting/looker.py`) — `looker_connector.json` +
+  stdlib-csv `looker_rows.csv` (no pandas, LITE-safe).
+- **Responsive + deeper brief** — single-column bento <768px, lazy-chart CSS,
+  system-font fallback; `rag_content_brief.md` now appends visibility,
+  funnel/outreach, FactCheck fixes, fan-out and word-association sections.
 
 ### What's new in v2.0.0 — Enterprise GEO release
 
@@ -155,6 +201,7 @@ guidelines, and the project's About + tags.**
 ## Table of Contents
 
 1. [Why it exists](#why-it-exists)
+2. [ What's new in v2.1.0](#-whats-new-in-v210--lite--visibility--closed-loop-release)
 2. [ What's new in v2.0.0](#-whats-new-in-v200--enterprise-geo-release)
 2. [ What's new in v1.3.0](#-whats-new-in-v130--enterprise-experience-release)
 3. [What problem it solves](#what-problem-it-solves)
@@ -271,7 +318,7 @@ publication) to close the gap.
 | **Storage** | `ragevda.storage` | DuckDB local vector DB ($0 forever) + `drift_timeseries.duckdb` |
 | **Orchestration** | `ragevda.orchestrator`, `ragevda.cli`, `ragevda.scheduler` | pipeline runner, CLI, recurring audit scheduler |
 | **Serving** | `ragevda.webapp`, `ragevda.api`, `ragevda.jobs_store`, `ragevda.security` | Flask UI (split `web_templates/` + `static/`) + FastAPI async API with persistent SQLite job queue, API-key auth, rate limiting, CSRF, SSRF guard |
-| **Reporting** | `ragevda.reporting` | 5-output contract: `report.json` / HTML dashboard / DuckDBs / RAG brief + JSON-LD / `llms.txt` + `agent.json` + MCP manifest (legacy CSVs archived) |
+| **Reporting** | `ragevda.reporting` | Full output bundle: `report.json` / HTML dashboard / DuckDBs / RAG brief + JSON-LD / action plan + `wp_drafts/` / `llms.txt` + `agent.json` + WebMCP manifests / Looker bundle (legacy CSVs archived) |
 
 ---
 
@@ -346,7 +393,7 @@ python -c "from sentence_transformers import SentenceTransformer; SentenceTransf
 python -c "from transformers import AutoTokenizer, AutoModelForSequenceClassification; AutoTokenizer.from_pretrained('tabularisai/multilingual-sentiment-analysis'); AutoModelForSequenceClassification.from_pretrained('tabularisai/multilingual-sentiment-analysis')"
 
 # 5. verify
-python -m ragevda.cli --version   # → ragevda 2.0.0
+python -m ragevda.cli --version   # → ragevda 2.1.0
 
 # 6. run the quality gates (unit + enterprise GEO gates)
 python -m pytest tests/ --geo -q  # → 48 passed
@@ -439,23 +486,39 @@ guard (no private/loopback hosts, validated redirect chain, optional
 
 ```bash
 uvicorn ragevda.api:app --host 127.0.0.1 --port 9000
-# GET  /health               → {"ok": true, "version": "2.0.0"}
+# GET  /health               → {"ok": true, "version": "2.1.0"}
 # POST /jobs                 → {"job_id": ...}  (X-API-Key header)
 # GET  /jobs/{id}            → status/progress/logs
 # GET  /jobs/{id}/report     → full report.json
 # OpenAPI docs at /docs; OTEL tracing when OTEL_EXPORTER_OTLP_ENDPOINT is set
 ```
 
-### Deploy on Render (Docker)
+### Deploy on Render (Docker) — LITE (free 512MB) vs FULL
 
 **Live deployment:** https://rag-corpus-entity-vector-distance-auditor.onrender.com/
 
-The `Dockerfile` is Render-ready: it pre-caches all models at build time,
-runs as non-root, binds `0.0.0.0:$PORT` automatically, and serves the Flask UI
-via **gunicorn** (1 worker × 8 threads — workers must stay 1 because audits,
-the scheduler, and the live job cache live in-process). Set `HF_TOKEN` in the
-Render dashboard to silence HF rate-limit warnings and speed up cold builds;
-set `RAGEVDA_API_KEY` to require API-key auth on `/run`.
+Two images, one codebase:
+
+| | LITE (free tier / any gadget) | FULL (paid Starter 2GB+ / local) |
+|---|---|---|
+| Dockerfile | `Dockerfile.render` | `Dockerfile` |
+| Deps | `requirements.render.txt` (no torch-CUDA, transformers, pandas, reportlab, faiss, fastapi) | `requirements.txt` / `pyproject.toml` |
+| Deploy | `render.yaml` (`healthCheckPath: /health`) | `docker-compose.yml` |
+| Embeddings | MiniLM-90MB | nomic-embed-text-v1.5 → BGE-M3 / Qwen3 |
+| Hybrid + reranker | OFF | ON (`bge-reranker-v2-m3`) |
+| Sentiment | lexicon fallback (labelled) | multilingual transformer + LLM-judge |
+| Boot / audit RSS | ~180–250MB / ~380–450MB | ~400MB+ / ~1.8GB |
+| Serving | gunicorn 1 worker × 2 threads, `--max-requests 50`, `--preload` | gunicorn 1 worker × 8 threads |
+
+Required env on Render: `RAGEVDA_LITE=1`, `RAGEVDA_ALLOW_FALLBACK=1`,
+`RAGEVDA_DISABLE_RERANKER=1`, `RAGEVDA_WORKERS=1` (all in `render.yaml`).
+Optional: `HF_TOKEN` (silences HF rate limits), `RAGEVDA_API_KEY` (auth on
+`/run`), `BRAVE_API_KEY` / `TAVILY_API_KEY` / `EXA_API_KEY` (live answer
+sampling), `AI_CRAWLER_LOG` (AI-bot analytics), `GSC_CREDENTIALS` /
+`GA4_PROPERTY` (attribution). The legacy `Dockerfile` pre-caches all models
+at build time, runs as non-root, binds `0.0.0.0:$PORT`, and serves the Flask
+UI via gunicorn (workers must stay 1: audits, scheduler and job cache live
+in-process).
 
 ### Python API
 
@@ -491,7 +554,7 @@ report = run(cfg)
 | `competitor_entities` | `List[str]` |  (≥1) | Direct competitor brand names (no limit). |
 | `crawl_depth` | `int` (1–200) | | Results/pages scraped per query. Hard-capped at 200. |
 | `locality` | `str \| None` | | Region / country code (e.g. `US`, `UK`, `Detroit`). `null` = global. |
-| `harvester` | `str` | | `duckduckgo` (default) \| `searxng` \| `file`. |
+| `harvester` | `str` | | `multi` (recommended: SearXNG + paid APIs + UGC) \| `duckduckgo` (fallback-only) \| `searxng` \| `answers` (paid keys) \| `file`. |
 | `searxng_base_url` | `str \| None` | | Your self-hosted SearXNG URL (used when harvester is `searxng` or `prefer_searxng`). |
 | `corpus_dir` / `corpus_files` | `str \| List[str]` | (file mode) | Local ground-truth corpus (owned PDFs, markdown, etc.). |
 
@@ -746,10 +809,14 @@ Every audit writes a self-contained folder (e.g. `ragevda_output/` or
 
 | File | Kind | Contents |
 |------|------|----------|
-| `report.json` | JSON | The **complete machine-readable result** — proximity, citation gap, invisibility, SoV, recommendations, provenance, freshness, advanced (sentiment, engine matrix, token density, poisoning, drift, chunking, synthetic queries, LLM). |
+| `report.json` | JSON | The **complete machine-readable result** — proximity, citation gap, invisibility, SoV, recommendations, provenance, freshness, advanced (sentiment, sentiment matrix, engine matrix, visibility score, fan-out, citation funnel, token density, poisoning, drift, chunking, synthetic queries, crawler, GSC/GA4 attribution, LLM, eval gates + FactCheck fixes). |
 | `dashboard.html` | HTML | A premium, self-contained, honest-data dashboard (proximity matrix, invisibility, SoV engine matrix, token-density adjuster, sentiment auditor, poisoning, drift trends, freshness, verification banner). |
-| `rag_content_brief.md` | Markdown | Per-topic publishing guidance derived from real metrics. |
+| `rag_content_brief.md` | Markdown | Per-topic publishing guidance derived from real metrics, plus visibility / funnel / FactCheck / fan-out / word-association appendix. |
 | `schema_jsonld_patch.json` | JSON | Structured-data patch for the RAG surface. |
+| `action_plan.json` + `action_plan.md` | JSON/Markdown | Closed-loop execution: new-content stubs, refreshes, Reddit actions, outreach. |
+| `wp_drafts/` | Markdown | WordPress-ready drafts per losing topic (front-matter + outline). |
+| `llms.txt` / `llms-full.txt` | Text | Lean agent files for coding assistants (no ranking effect). |
+| `agent.json` / `mcp.json` / `.well-known/mcp.json` / `.well-known/webmcp.json` | JSON | WebMCP-first agentic surface (Chrome 149 `navigator.modelContext`). |
 | `proximity_scores.csv` | CSV | Topic × entity proximity, relevance counts, confidence, top sources. |
 | `entity_citation_summary.csv` | CSV | Linked / unlinked / omitted citation counts per entity. |
 | `off_page_targets.csv` | CSV | High-relevance URLs not yet mentioning the brand (pitch list). |
@@ -767,6 +834,7 @@ Every audit writes a self-contained folder (e.g. `ragevda_output/` or
 | `synthetic_retrieval_queries.csv` | CSV | Reverse-engineered retrieval prompts + confidence. |
 | `corpus.duckdb` | DB | The full local vector/corpus store (SQL-queryable, $0). |
 | `drift_timeseries.duckdb` | DB | Persistent cross-run time-series for drift. |
+| `looker_connector.json` + `looker_rows.csv` | JSON/CSV | Looker Studio connector bundle (stdlib csv, LITE-safe). |
 | `report.pdf` | PDF | (web UI) a **~17-page enterprise report**: cover + KPI cards, captioned charts, per-section issue callouts, color-coded cells, all 10 engines and the full outputs ledger. Served from `web_output/jobs/<…>/`; stale copies auto-regenerate on download. |
 
 ---
@@ -776,7 +844,7 @@ Every audit writes a self-contained folder (e.g. `ragevda_output/` or
 ```jsonc
 {
   "meta": {
-    "tool": "RAG-EVDA", "version": "1.3.0", "generated_at": "...Z",
+    "tool": "RAG-EVDA", "version": "2.1.0", "generated_at": "...Z",
     "config": { /* every RunConfig field */ },
     "embedding_kind": "sentence-transformers",
     "embedding_model": "BAAI/bge-small-en-v1.5",

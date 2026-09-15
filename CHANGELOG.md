@@ -3,6 +3,20 @@
 All notable changes to RAG-EVDA. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+### Added
+- v2.1.0 LITE profile: `Dockerfile.render` + `requirements.render.txt` +
+  `render.yaml` (CPU-only torch, MiniLM-90MB, reranker/hybrid OFF, lazy
+  reportlab + webapp imports, 1×2 gunicorn, model-free `/health`).
+- 10-engine tracking matrix; `RunConfig.lite_profile()` / `full_profile()` /
+  `apply_env_overrides()`.
+- `analysis/visibility.py` (Visibility 0–100, Position, Mentions-vs-Citations,
+  median delta), `analysis/fanout.py`, `analysis/citation_funnel.py`,
+  `analysis/sentiment_matrix.py`, `analysis/crawler.py`,
+  `eval/factcheck.py` (gate fixes), `reporting/action_plan.py`
+  (+ `wp_drafts/`), `reporting/looker.py`, WebMCP manifests.
+- GSC Generative-AI + GA4 Data API attribution wired (fail-open);
+  responsive single-column mobile CSS; deeper `rag_content_brief.md`.
+
 ### Fixed
 - Concurrent audits no longer cross-contaminate logs/progress (single-flight
   engine: one audit at a time, friendly busy message naming the running job).

@@ -38,13 +38,17 @@ ugc_youtube: true
 ugc_tiktok: true
 
 # ---- NLP / embedding models (local, zero-cost) ----
-# Default 2026: nomic-embed-text-v1.5 (137M, CPU-fast, Apache-2.0, 8k ctx).
-# Alternatives when cached: BAAI/bge-m3 (100+ langs, hybrid), Qwen/Qwen3-Embedding-0.6B.
-# MiniLM kept as last-resort fallback only.
+# FULL profile (paid 2GB+ / workstation): nomic-embed-text-v1.5 (137M,
+# CPU-fast, Apache-2.0, 8k ctx) + hybrid + bge-reranker-v2-m3.
+# LITE profile (Render free 512MB / any phone: RAGEVDA_LITE=1):
+#   embedding_model: sentence-transformers/all-MiniLM-L6-v2 (90MB),
+#   use_hybrid_retrieval: false, reranker_model: null.
+# Alternatives when cached: BAAI/bge-m3 (100+ langs), Qwen/Qwen3-Embedding-0.6B.
+# MiniLM is last-resort fallback in FULL, default in LITE.
 embedding_model: "nomic-ai/nomic-embed-text-v1.5"
 spacy_model: "en_core_web_sm"      # multilingual xx_ent_wiki_sm + GLiNER tried when available
 reranker_model: "BAAI/bge-reranker-v2-m3"
-use_hybrid_retrieval: true         # BM25 + dense cosine + cross-encoder rerank
+use_hybrid_retrieval: true         # BM25 + dense cosine + cross-encoder rerank (FULL only)
 
 # ---- Output ----
 output_dir: "./ragevda_output"
@@ -72,13 +76,20 @@ chunk_overlap_tokens: 64
 # Token-density target + retrieval depth
 target_entity_density: 0.015
 top_k_retrieval: 5
-# AI-engine matrix for SoV heatmap
+# AI-engine matrix for SoV heatmap (2026 daily-tracking set, 10 engines).
+# Simulated SoV from on-page features unless answer_harvester=multi + paid
+# keys (live answer sampling). Without paid keys this is triage, not tracking.
 engine_matrix:
   - "Google AI Overviews"
-  - "SearchGPT"
+  - "Google AI Mode"
+  - "ChatGPT"
   - "Gemini"
+  - "Claude"
   - "Perplexity"
   - "Bing Copilot"
+  - "Grok"
+  - "Meta AI"
+  - "DeepSeek"
 # Semantic drift history retention (runs)
 drift_history_keep: 60
 # Synthetic query generator
@@ -90,7 +101,11 @@ ollama_model: "llama3"
 
 # ---- P0: Live LLM Answer Harvester (GEO) ----
 # Queries real answer surfaces Nx per prompt, parses citations + answer text.
-# off | brave | tavily | exa | multi (requires the API keys above)
+# off | brave | tavily | exa | multi (requires the API keys above).
+# DEFAULT PATH FOR REAL GEO: harvester: multi + answer_harvester: multi +
+# answer_repeats: 5-10. Cost guide: Brave behavioral + cheap, Tavily per-call,
+# Exa neural — set keys via env (BRAVE_API_KEY / TAVILY_API_KEY / EXA_API_KEY),
+# never commit keys. Without paid keys you get simulated SoV (triage only).
 answer_harvester: "off"
 answer_repeats: 5                  # 5-10x per prompt (probabilistic noise sampling)
 

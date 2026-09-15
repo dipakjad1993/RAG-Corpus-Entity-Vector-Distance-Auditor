@@ -123,6 +123,47 @@ def generate_rag_brief(report: Dict) -> str:
         ]
     if not density:
         brief.append("No displacement targets — the brand is already competitive.")
+    # ---- Executive visibility + closed-loop appendix (2026 depth) ----
+    adv = report.get("advanced", {}) or {}
+    vis = adv.get("visibility", {}) or {}
+    if vis.get("table"):
+        brief += ["", "## Executive visibility (C-suite translation)", ""]
+        for r in vis["table"]:
+            brief.append(
+                f"- **{r.get('entity', '')}**: Visibility {r.get('visibility', 0)}/100 "
+                f"(Position #{r.get('position', '?')}) · mentions {r.get('mentions', 0)} "
+                f"vs linked citations {r.get('citations_linked', 0)} "
+                f"(unlinked {r.get('citations_unlinked', 0)}).")
+        brief.append(
+            f"\nCompetitor median visibility {vis.get('competitor_median_visibility', 0)}; "
+            f"brand delta {vis.get('delta_vs_median', 0):+} (Semrush-style).")
+    funnel = adv.get("citation_funnel", {}) or {}
+    if funnel.get("funnel"):
+        brief += ["", "## Cited-vs-found funnel + outreach", ""]
+        for f in funnel["funnel"]:
+            brief.append(
+                f"- **{f.get('entity', '')}**: found {f.get('found_docs', 0)} → "
+                f"mentioned {f.get('mention_docs', 0)} ({f.get('mention_rate_pct', 0)}%) → "
+                f"cited {f.get('cited_docs', 0)} → linked {f.get('linked_docs', 0)}.")
+        for o in (funnel.get("outreach_targets", []) or [])[:8]:
+            brief.append(f"- Outreach: {o.get('domain', '')} "
+                         f"({o.get('unlinked_mentions', 0)} unlinked) → {o.get('contact_guess', '')}")
+    ev = adv.get("eval", {}) or {}
+    if ev.get("fixes"):
+        brief += ["", "## FactCheck auto-corrections (fix loop, not just fail)", ""]
+        for fx in ev["fixes"][:12]:
+            brief.append(f"- [{fx.get('type', '')}] {fx.get('evidence', '')[:160]}")
+            brief.append(f"  Fix: {fx.get('suggestion', '')[:300]}")
+    fo = adv.get("fanout", {}) or {}
+    if fo.get("count"):
+        brief.append(f"\n## Query fan-out: {fo['count']} volume-weighted prompts "
+                     f"(total weight {fo.get('total_weight', 0)}). See report.json advanced.fanout.")
+    sm = adv.get("sentiment_matrix", {}) or {}
+    if sm.get("word_association"):
+        brief += ["", "## Word association (what words own you)", ""]
+        for ent, words in list(sm["word_association"].items())[:6]:
+            top = ", ".join(w.get("word", "") for w in (words or [])[:8])
+            brief.append(f"- **{ent}**: {top}")
     return "\n".join(brief)
 
 

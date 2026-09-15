@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: ragevda-lite
+    plan: free
+    env: docker
+    dockerfilePath: ./Dockerfile.render
+    healthCheckPath: /health
+    envVars:
+      - key: RAGEVDA_WORKERS
+        value: 1
+      - key: RAGEVDA_ALLOW_FALLBACK
+        value: 1
+      - key: RAGEVDA_LITE
+        value: 1
+      - key: RAGEVDA_DISABLE_RERANKER
+        value: 1
+      - key: HF_HUB_OFFLINE
+        value: 1

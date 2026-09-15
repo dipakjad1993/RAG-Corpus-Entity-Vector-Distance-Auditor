@@ -17,59 +17,164 @@ from __future__ import annotations
 import statistics
 from typing import Any, Dict, List, Tuple
 
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import mm
-from reportlab.platypus import (
-    BaseDocTemplate, Frame, HRFlowable, PageTemplate, Paragraph,
-    Spacer, Table, TableStyle,
-)
-from reportlab.graphics.charts.barcharts import VerticalBarChart
-from reportlab.graphics.charts.piecharts import Pie
-from reportlab.graphics.shapes import Drawing, Line, String
 
-# ---- enterprise print palette (Material 3 derived, print-tuned) ---------
-PRIMARY = colors.HexColor("#6750A4")
-PRIMARY_DARK = colors.HexColor("#4F378B")
-ON_PRIMARY = colors.HexColor("#FFFFFF")
-PRIMARY_CONTAINER = colors.HexColor("#EADDFF")
-SECONDARY = colors.HexColor("#625B71")
-TERTIARY = colors.HexColor("#7D5260")
-TERTIARY_CONTAINER = colors.HexColor("#FFD8E4")
-COVER_BG = colors.HexColor("#17141F")
-COVER_RULE = colors.HexColor("#D0BCFF")
-INK = colors.HexColor("#1C1B1F")
-MUTED = colors.HexColor("#49454F")
-LINE = colors.HexColor("#CAC4D0")
-ALT = colors.HexColor("#F4EFFA")
-ALT2 = colors.HexColor("#EDE7F6")
-BAD = colors.HexColor("#BA1A1A")
-WARN = colors.HexColor("#8A6100")
-GOOD = colors.HexColor("#2F7A3E")
+def _rl():
+    """Lazy reportlab imports — keeps /health + web boot at ~0MB.
+
+    reportlab (~7MB + fonts) is only loaded inside build_pdf()/render path,
+    never at module import. Required for Render free 512MB (RAGEVDA_LITE).
+    """
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import (
+        BaseDocTemplate, Frame, HRFlowable, PageTemplate, Paragraph,
+        Spacer, Table, TableStyle,
+    )
+    from reportlab.graphics.charts.barcharts import VerticalBarChart
+    from reportlab.graphics.charts.piecharts import Pie
+    from reportlab.graphics.shapes import Drawing, Line, String
+    return {
+        "colors": colors, "TA_CENTER": TA_CENTER, "TA_LEFT": TA_LEFT,
+        "A4": A4, "ParagraphStyle": ParagraphStyle,
+        "getSampleStyleSheet": getSampleStyleSheet, "mm": mm,
+        "BaseDocTemplate": BaseDocTemplate, "Frame": Frame,
+        "HRFlowable": HRFlowable, "PageTemplate": PageTemplate,
+        "Paragraph": Paragraph, "Spacer": Spacer, "Table": Table,
+        "TableStyle": TableStyle, "VerticalBarChart": VerticalBarChart,
+        "Pie": Pie, "Drawing": Drawing, "Line": Line, "String": String,
+    }
+
+# ---- enterprise print palette: HEX strings at import (zero-cost boot).
+# render_report_pdf() upgrades these globals to real reportlab Color objects
+# via _ensure_pdf_deps() on first actual PDF build. Import-time cost: ~0MB.
+PRIMARY = "#6750A4"
+PRIMARY_DARK = "#4F378B"
+ON_PRIMARY = "#FFFFFF"
+PRIMARY_CONTAINER = "#EADDFF"
+SECONDARY = "#625B71"
+TERTIARY = "#7D5260"
+TERTIARY_CONTAINER = "#FFD8E4"
+COVER_BG = "#17141F"
+COVER_RULE = "#D0BCFF"
+INK = "#1C1B1F"
+MUTED = "#49454F"
+LINE = "#CAC4D0"
+ALT = "#F4EFFA"
+ALT2 = "#EDE7F6"
+BAD = "#BA1A1A"
+WARN = "#8A6100"
+GOOD = "#2F7A3E"
 CALL_BG = {
-    "critical": colors.HexColor("#FDECEA"),
-    "high": colors.HexColor("#FFF4D6"),
-    "medium": colors.HexColor("#F4EFFA"),
-    "good": colors.HexColor("#E7F3EA"),
+    "critical": "#FDECEA",
+    "high": "#FFF4D6",
+    "medium": "#F4EFFA",
+    "good": "#E7F3EA",
 }
 CALL_BAR = {
-    "critical": colors.HexColor("#BA1A1A"),
-    "high": colors.HexColor("#9A6B00"),
-    "medium": colors.HexColor("#6750A4"),
-    "good": colors.HexColor("#2F7A3E"),
+    "critical": "#BA1A1A",
+    "high": "#9A6B00",
+    "medium": "#6750A4",
+    "good": "#2F7A3E",
 }
 SEV_RANK = {"critical": 0, "high": 1, "medium": 2, "good": 3}
 CHART_COLORS = [
-    colors.HexColor("#6750A4"), colors.HexColor("#7D5260"),
-    colors.HexColor("#4C7C5C"), colors.HexColor("#8A6100"),
-    colors.HexColor("#42599E"), colors.HexColor("#9C4048"),
-    colors.HexColor("#5B5BD6"), colors.HexColor("#2E7D6F"),
+    "#6750A4", "#7D5260",
+    "#4C7C5C", "#8A6100",
+    "#42599E", "#9C4048",
+    "#5B5BD6", "#2E7D6F",
 ]
 
 PRIMARY_HEX = "#6750A4"
 GRID_WIDTH = 170.0  # mm — every table/chart aligns to this single grid
+
+
+_PDF_DEPS = None
+
+
+def _ensure_pdf_deps():
+    """Import reportlab lazily + upgrade palette globals to real Colors.
+
+    Called at the top of render_report_pdf() (and build_pdf alias). Keeps
+    `import ragevda.webapp` / `/health` free of the ~7MB reportlab import
+    plus pandas/torch chains on Render free tier.
+    """
+    global _PDF_DEPS
+    global PRIMARY, PRIMARY_DARK, ON_PRIMARY, PRIMARY_CONTAINER
+    global SECONDARY, TERTIARY, TERTIARY_CONTAINER, COVER_BG, COVER_RULE
+    global INK, MUTED, LINE, ALT, ALT2, BAD, WARN, GOOD
+    global CALL_BG, CALL_BAR, CHART_COLORS
+    if _PDF_DEPS is not None:
+        return _PDF_DEPS
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import (
+        BaseDocTemplate, Frame, HRFlowable, PageTemplate, Paragraph,
+        Spacer, Table, TableStyle,
+    )
+    from reportlab.graphics.charts.barcharts import VerticalBarChart
+    from reportlab.graphics.charts.piecharts import Pie
+    from reportlab.graphics.shapes import Drawing, Line, String
+    H = colors.HexColor
+    PRIMARY = H(PRIMARY)
+    PRIMARY_DARK = H(PRIMARY_DARK)
+    ON_PRIMARY = H(ON_PRIMARY)
+    PRIMARY_CONTAINER = H(PRIMARY_CONTAINER)
+    SECONDARY = H(SECONDARY)
+    TERTIARY = H(TERTIARY)
+    TERTIARY_CONTAINER = H(TERTIARY_CONTAINER)
+    COVER_BG = H(COVER_BG)
+    COVER_RULE = H(COVER_RULE)
+    INK = H(INK)
+    MUTED = H(MUTED)
+    LINE = H(LINE)
+    ALT = H(ALT)
+    ALT2 = H(ALT2)
+    BAD = H(BAD)
+    WARN = H(WARN)
+    GOOD = H(GOOD)
+    CALL_BG = {k: H(v) for k, v in CALL_BG.items()}
+    CALL_BAR = {k: H(v) for k, v in CALL_BAR.items()}
+    CHART_COLORS = [H(c) for c in CHART_COLORS]
+    _PDF_DEPS = {
+        "colors": colors, "TA_CENTER": TA_CENTER, "TA_LEFT": TA_LEFT,
+        "A4": A4, "ParagraphStyle": ParagraphStyle,
+        "getSampleStyleSheet": getSampleStyleSheet, "mm": mm,
+        "BaseDocTemplate": BaseDocTemplate, "Frame": Frame,
+        "HRFlowable": HRFlowable, "PageTemplate": PageTemplate,
+        "Paragraph": Paragraph, "Spacer": Spacer, "Table": Table,
+        "TableStyle": TableStyle, "VerticalBarChart": VerticalBarChart,
+        "Pie": Pie, "Drawing": Drawing, "Line": Line, "String": String,
+    }
+    return _PDF_DEPS
+
+
+def build_pdf(*args, **kwargs):
+    """Alias kept for API compat — lazy-loads reportlab then delegates."""
+    return render_report_pdf(*args, **kwargs)
+
+
+# PEP 562 lazy fallback: any legacy bare reference (Paragraph, Table, mm,
+# colors, …) resolves via _ensure_pdf_deps() on first use and is cached in
+# globals, so all 1200 lines below keep working unchanged with zero
+# import-time cost.
+def __getattr__(name: str):
+    _LAZY_NAMES = {
+        "colors", "TA_CENTER", "TA_LEFT", "A4", "ParagraphStyle",
+        "getSampleStyleSheet", "mm", "BaseDocTemplate", "Frame",
+        "HRFlowable", "PageTemplate", "Paragraph", "Spacer", "Table",
+        "TableStyle", "VerticalBarChart", "Pie", "Drawing", "Line", "String",
+    }
+    if name in _LAZY_NAMES:
+        deps = _ensure_pdf_deps()
+        globals()[name] = deps[name]
+        return deps[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _e(s: Any) -> str:
@@ -392,6 +497,7 @@ def _empty_note(styles: Dict[str, ParagraphStyle], what: str) -> Paragraph:
 
 
 def render_report_pdf(data: Dict[str, Any], job_id: str, out_path: str) -> str:
+    _ensure_pdf_deps()  # upgrade palette + bind reportlab (lazy, ~7MB only here)
     meta = data.get("meta", {}) or {}
     cfg = meta.get("config", {}) or {}
     di = meta.get("data_integrity", {}) or {}

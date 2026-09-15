@@ -78,6 +78,10 @@ class Reranker:
         self.available = False
         try:
             import os as _os
+            # Render free / LITE: never load the 568M-param reranker (~1-2GB).
+            if _os.getenv("RAGEVDA_DISABLE_RERANKER") or _os.getenv("RAGEVDA_LITE"):
+                self.available = False
+                return
             from huggingface_hub import try_to_load_from_cache
             hit = any(try_to_load_from_cache(self.MODEL, f)
                       for f in ("model.safetensors", "pytorch_model.bin", "config.json"))

@@ -67,6 +67,11 @@ def _get_transformer_pipeline():
     single authenticated network download on first-ever run. Never returns a
     fake pipeline — returns None only when no real model can be loaded.
     """
+    import os as _os
+    # RAGEVDA_LITE / RAGEVDA_ALLOW_FALLBACK: skip the ~600MB transformer and
+    # force the transparent lexicon fallback (labelled lexicon-fallback).
+    if _os.getenv("RAGEVDA_LITE") or _os.getenv("RAGEVDA_ALLOW_FALLBACK"):
+        return None
     global _SENTI_PIPELINE, _SENTI_LOAD_ERROR
     with _senti_lock:
         if _SENTI_PIPELINE is not None or _SENTI_LOAD_ERROR is not None:

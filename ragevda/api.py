@@ -27,7 +27,7 @@ except Exception:  # noqa: BLE001
 
 from . import __version__ as _ver
 
-_POOL = ThreadPoolExecutor(max_workers=int(os.environ.get("RAGEVDA_WORKERS", "2")))
+_POOL = ThreadPoolExecutor(max_workers=int(os.environ.get("RAGEVDA_WORKERS", "1")))
 
 
 class JobRequest(BaseModel):

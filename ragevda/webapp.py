@@ -36,9 +36,21 @@ from flask import Flask, Response, request, send_from_directory, redirect
 from .tracking import (load_runs, brands, runs_for_brand, diff_runs,
                         trend_chart, per_topic_trend_chart)
 from .scheduler import Scheduler, Schedule
-from .reporting import narrative as _narrative
-from .reporting import deep_analysis as _deep
-from .reporting.theme import get_style as _get_style
+
+
+def _lazy_narrative():
+    from .reporting import narrative as _n
+    return _n
+
+
+def _lazy_deep():
+    from .reporting import deep_analysis as _d
+    return _d
+
+
+def _lazy_style():
+    from .reporting.theme import get_style as _g
+    return _g
 
 logger = logging.getLogger("ragevda.webapp")
 
@@ -71,10 +83,15 @@ except Exception:  # noqa: BLE001
 
 # Bounded worker pool (replaces unbounded per-job threads + single-flight).
 import concurrent.futures as _fut
-_WORKERS = int(os.environ.get("RAGEVDA_WORKERS", "2"))
+_WORKERS = int(os.environ.get("RAGEVDA_WORKERS", "1"))
 _POOL = _fut.ThreadPoolExecutor(max_workers=max(1, _WORKERS))
 
-WEB_STYLE = _get_style("webapp")
+try:
+    _WEB_STYLE = _lazy_style()("webapp")
+except Exception:  # theme module pulls zero heavy deps; guard anyway
+    _WEB_STYLE = ""
+
+WEB_STYLE = _WEB_STYLE
 
 # Order matters: first matching keyword wins.
 # Note: the pipeline's own "audit complete" log line must NOT be mapped to 100 —
@@ -278,6 +295,9 @@ tr:nth-child(even) td{background:color-mix(in srgb, var(--m3-surface-container-h
 .steps .step{flex:1 1 180px; padding:10px 14px; border-radius:14px; border:1px solid var(--m3-outline-variant); font-size:13px; font-weight:700}
 .steps .step.active{background:var(--m3-primary-container); color:var(--m3-on-primary-container)}
 @media(max-width:720px){.m3-app-bar .m3-app-inner{flex-wrap:wrap}.hero{padding:22px 18px}th,td{font-size:12px; padding:8px}}
+@media(max-width:768px){.bento{grid-template-columns:1fr}.bento .card{grid-column:span 12}}
+img,canvas,svg{max-width:100%;height:auto} img[loading]{content-visibility:auto}
+body{font-family:var(--m3-font,Google Sans,Roboto Flex,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif)}
 </style></head>
 <body>
 <div class="m3-app-bar"><div class="m3-app-inner">
@@ -386,8 +406,10 @@ tr:nth-child(even) td{background:color-mix(in srgb, var(--m3-surface-container-h
         <div>
           <label class="m3-fieldlabel">Harvester</label>
           <select name="harvester" class="m3-input">
-            <option value="duckduckgo" selected>DuckDuckGo (live, free)</option>
+            <option value="multi">Multi fan-out (SearXNG + Brave/Tavily/Exa + UGC — recommended)</option>
+            <option value="duckduckgo" selected>DuckDuckGo (live, free — fallback only)</option>
             <option value="searxng">SearXNG (self-hosted)</option>
+            <option value="answers">Answers only (needs paid keys)</option>
             <option value="file">Local corpus folder</option>
           </select>
           <label class="m3-check" style="margin-top:10px">
@@ -426,7 +448,7 @@ tr:nth-child(even) td{background:color-mix(in srgb, var(--m3-surface-container-h
         </div>
         <div>
           <label class="m3-fieldlabel">AI-engine matrix (comma-separated)</label>
-          <input type="text" name="engine_matrix" value="Google AI Overviews, SearchGPT, Gemini, Perplexity, Bing Copilot" class="m3-input">
+          <input type="text" name="engine_matrix" value="Google AI Overviews, Google AI Mode, ChatGPT, Gemini, Claude, Perplexity, Bing Copilot, Grok, Meta AI, DeepSeek" class="m3-input">
         </div>
       </div>
       <div class="m3-field-grid" style="margin-top:12px">
@@ -871,7 +893,7 @@ def _start_run(profile: dict) -> str:
         if intent and pattern:
             query_templates[intent] = pattern
     engine_list = [e.strip() for e in (profile.get("engine_matrix") or
-                                       "Google AI Overviews, SearchGPT, Gemini, Perplexity, Bing Copilot").split(",")
+                                       "Google AI Overviews, Google AI Mode, ChatGPT, Gemini, Claude, Perplexity, Bing Copilot, Grok, Meta AI, DeepSeek").split(",")
                    if e.strip()]
 
     cfg = RunConfig(
@@ -977,6 +999,18 @@ code{background:var(--m3-surface-container-high);padding:1px 6px;border-radius:6
   text-decoration:none;font-weight:700;transition:.16s}
 .topnav a:hover{border-color:var(--m3-primary);color:var(--m3-primary);transform:translateY(-1px);
   box-shadow:var(--m3-shadow-1)}
+/* ---- 2026 responsive hardening: bento -> single column <768px, lazy charts,
+   paginated tables, system-font fallback, prefers-color-scheme ---- */
+@media(max-width:768px){.bento{grid-template-columns:1fr}
+  .bento .card{grid-column:span 12}.hero{padding:20px 16px}
+  table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}}
+@media(prefers-color-scheme:light){:root{color-scheme:light}}
+body{font-family:var(--m3-font,Google Sans,Roboto Flex,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif)}
+img,canvas,iframe,svg{max-width:100%;height:auto}
+img[loading],canvas[loading]{content-visibility:auto}
+.m3-table-wrap{overflow-x:auto}
+tr[data-page-hidden="1"]{display:none}
+@media(max-width:720px){.kpis{grid-template-columns:1fr 1fr}.kpi .v{font-size:22px}}
 """
 
 
@@ -1144,6 +1178,21 @@ def create_app() -> Flask:
         from .security import rate_limited as _rl, check_api_key as _auth
     except Exception:
         _rl = None; _auth = None
+
+    @app.route("/health")
+    def health():
+        """Lightweight liveness probe — 5 lines, zero model loads.
+
+        Render / K8s hit this every 10s. Must never import torch,
+        transformers, sentence-transformers, pandas or reportlab.
+        """
+        return Response(json.dumps({"ok": True, "service": "ragevda-lite"}),
+                        mimetype="application/json")
+
+    @app.route("/robots.txt")
+    def robots():
+        return Response("User-agent: *\nAllow: /\n",
+                        mimetype="text/plain")
 
     @app.route("/")
     def index():
@@ -1361,7 +1410,7 @@ def create_app() -> Flask:
         data = _load_job_data(job)
         if data is None:
             return Response("<p class='muted'>Job not found.</p>", mimetype="text/html")
-        return Response(_narrative.features_html(data, job), mimetype="text/html")
+        return Response(_lazy_narrative().features_html(data, job), mimetype="text/html")
 
     @app.route("/page/analysis/<job>")
     def page_analysis(job: str):
@@ -1370,7 +1419,7 @@ def create_app() -> Flask:
         data = _load_job_data(job)
         if data is None:
             return Response("<p class='muted'>Job not found.</p>", mimetype="text/html")
-        body = _deep.render_all(job, data)
+        body = _lazy_deep().render_all(job, data)
         return Response(body, mimetype="text/html")
 
     @app.route("/page/deep/<job>/<feature>")
@@ -1378,7 +1427,7 @@ def create_app() -> Flask:
         data = _load_job_data(job)
         if data is None:
             return Response("<p class='muted'>Job not found.</p>", mimetype="text/html")
-        body = _deep.render_deep(job, feature, data)
+        body = _lazy_deep().render_deep(job, feature, data)
         return Response(
             "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -1400,7 +1449,7 @@ def create_app() -> Flask:
         data = _load_job_data(job)
         if data is None:
             return Response("<p class='muted'>Job not found.</p>", mimetype="text/html")
-        return Response(_narrative.outputs_html(data, job), mimetype="text/html")
+        return Response(_lazy_narrative().outputs_html(data, job), mimetype="text/html")
 
     @app.route("/history")
     def history():

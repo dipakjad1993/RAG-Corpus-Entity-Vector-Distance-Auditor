@@ -85,6 +85,71 @@ def run_advanced(ctx, config, proximity_rows, citation_result,
     finally:
         llm_engine.close()
 
+    # 9. C-suite Visibility Score (Semrush-style, auditable) — needs
+    # proximity/citation/invisibility already computed; build a minimal
+    # interim report view. Fail-open: never aborts the audit.
+    try:
+        from .visibility import compute_visibility
+        _interim = {"proximity": {"rows": proximity_rows},
+                    "citation_gap": citation_result,
+                    "invisibility": invisibility_result}
+        result["visibility"] = compute_visibility(_interim, config)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("visibility score skipped: %s", exc)
+        result["visibility"] = {"table": [], "method": "skipped"}
+
+    # 10. Query fan-out expansion + volume weighting (forward tracking).
+    try:
+        from .fanout import expand_prompts
+        titles = [getattr(d, "title", "") or "" for d in (ctx.docs or [])]
+        result["fanout"] = expand_prompts(
+            list(config.industry_topics or []),
+            list(getattr(config, "prompt_frames", ["informational"]) or ["informational"]),
+            list(getattr(config, "personas", ["default"]) or ["default"]),
+            volume=int(getattr(config, "prompt_volume", 5) or 5),
+            harvested_titles=titles)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("fan-out expansion skipped: %s", exc)
+        result["fanout"] = {"prompts": [], "count": 0}
+
+    # 11. Citation-source funnel + fan-out decomposition + outreach.
+    try:
+        from .citation_funnel import citation_funnel
+        _prov = [{"url": getattr(d, "url", ""), "title": getattr(d, "title", ""),
+                  "top_topic": ""} for d in (ctx.docs or [])]
+        result["citation_funnel"] = citation_funnel(
+            {"provenance": _prov, "citation_gap": citation_result}, config)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("citation funnel skipped: %s", exc)
+        result["citation_funnel"] = {"funnel": []}
+
+    # 12. Persona x platform sentiment matrix + word association.
+    try:
+        from .sentiment_matrix import sentiment_matrix
+        result["sentiment_matrix"] = sentiment_matrix(
+            ctx.docs, config, result.get("sentiment"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("sentiment matrix skipped: %s", exc)
+        result["sentiment_matrix"] = {"matrix": {}}
+
+    # 13. AI-crawler analytics (log path via env AI_CRAWLER_LOG).
+    try:
+        import os as _os
+        from .crawler import analyze_crawler_logs
+        result["crawler"] = analyze_crawler_logs(
+            log_path=_os.environ.get("AI_CRAWLER_LOG", ""))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("crawler analytics skipped: %s", exc)
+        result["crawler"] = {"configured": False}
+
+    # 14. GSC Generative-AI + GA4 attribution (wired; configured:false w/o creds).
+    try:
+        from ..attribution import gsc_attribution, ga4_attribution
+        result["attribution_gsc"] = gsc_attribution(config)
+        result["attribution_ga4"] = ga4_attribution(config)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("attribution skipped: %s", exc)
+
     return result
 
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ragevda"
-version = "2.0.0"
+version = "2.1.0"
 description = "RAG Corpus Entity & Vector Distance Auditor - enterprise AI-search (GEO) visibility intelligence."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,6 +43,11 @@ dependencies = [
 dev = ["pytest>=8", "ruff>=0.4", "pip-audit>=2.7"]
 enterprise = ["faiss-cpu>=1.8.0", "opentelemetry-instrumentation-fastapi>=0.44.0"]
 full = ["faiss-cpu>=1.8.0", "opentelemetry-instrumentation-fastapi>=0.44.0"]
+# LITE (Render free 512MB): pip install -e . + requirements.render.txt.
+# Heavy deps (torch CUDA, transformers, pandas, reportlab, faiss, fastapi)
+# are NEVER imported at web boot (/health) — see Dockerfile.render,
+# RAGEVDA_LITE=1, and lazy loaders in reporting/pdf_report.py + webapp.py.
+lite = []
 
 [project.scripts]
 ragevda = "ragevda.cli:main"

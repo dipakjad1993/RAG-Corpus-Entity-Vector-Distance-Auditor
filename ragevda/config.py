@@ -56,9 +56,24 @@ _MAX_TOPICS = 20
 _MAX_COMPETITORS = 15
 
 # The AI "engine matrix" -- the answer engines + search interfaces whose RAG
-# retrieval behaviour we model. Scores are reported per engine so teams can
-# compare Vector Share of Voice across the surfaces that actually matter.
+# retrieval behaviour we model. 2026 daily-tracking set (10): ChatGPT, Gemini,
+# Claude, Perplexity, Copilot, Grok, Meta AI, DeepSeek, AI Overviews, AI Mode.
+# Scores are reported per engine so teams can compare Vector Share of Voice
+# across the surfaces that actually matter.
 DEFAULT_ENGINE_MATRIX = [
+    "Google AI Overviews",
+    "Google AI Mode",
+    "ChatGPT",
+    "Gemini",
+    "Claude",
+    "Perplexity",
+    "Bing Copilot",
+    "Grok",
+    "Meta AI",
+    "DeepSeek",
+]
+# Legacy 5-engine set (kept for back-compat with stored runs).
+LEGACY_ENGINE_MATRIX = [
     "Google AI Overviews",
     "SearchGPT",
     "Gemini",
@@ -615,3 +630,56 @@ class RunConfig:
         History & Trends)."""
         import os
         return os.path.join(self.output_dir, "drift_timeseries.duckdb")
+
+    # -------------------------------------------------------------------
+    def apply_env_overrides(self) -> "RunConfig":
+        """Apply RAGEVDA_* env profile overrides (LITE vs FULL).
+
+        * ``RAGEVDA_LITE=1`` (Render free 512MB): MiniLM-90MB embeddings,
+          hybrid retrieval OFF, reranker OFF. ~180-250MB boot, ~380-450MB
+          audit vs 1.8GB full. TF-IDF/regex lite path is ~80MB RSS.
+        * ``RAGEVDA_ALLOW_FALLBACK=1``: downgrade ``require_real_models``
+          so air-gapped / cache-cold boxes emit labelled triage numbers
+          instead of crashing.
+        * ``RAGEVDA_DISABLE_RERANKER=1``: force reranker off.
+        Returns self for chaining.
+        """
+        import os as _os
+        if _os.getenv("RAGEVDA_LITE"):
+            if self.embedding_model == DEFAULT_EMBEDDING_MODEL:
+                self.embedding_model = LEGACY_EMBEDDING_MODEL
+            self.use_hybrid_retrieval = False
+            self.reranker_model = ""
+            if not getattr(self, "answer_harvester", "off") or \
+                    getattr(self, "answer_harvester", "off") == "off":
+                pass  # stay off without paid keys; UI guides to multi
+        if _os.getenv("RAGEVDA_DISABLE_RERANKER"):
+            self.use_hybrid_retrieval = False
+            self.reranker_model = ""
+        if _os.getenv("RAGEVDA_ALLOW_FALLBACK") == "1":
+            self.require_real_models = False
+        return self
+
+    @classmethod
+    def lite_profile(cls, target_brand: str, industry_topics: list,
+                     competitor_entities: list, **kw) -> "RunConfig":
+        """LITE preset constructor (free-tier / any phone/laptop)."""
+        kw.setdefault("embedding_model", LEGACY_EMBEDDING_MODEL)
+        kw.setdefault("use_hybrid_retrieval", False)
+        kw.setdefault("reranker_model", "")
+        kw.setdefault("require_real_models", False)
+        return cls(target_brand=target_brand,
+                   industry_topics=industry_topics,
+                   competitor_entities=competitor_entities, **kw)
+
+    @classmethod
+    def full_profile(cls, target_brand: str, industry_topics: list,
+                     competitor_entities: list, **kw) -> "RunConfig":
+        """FULL preset constructor (paid 2GB+ / local workstation)."""
+        kw.setdefault("embedding_model", DEFAULT_EMBEDDING_MODEL)
+        kw.setdefault("use_hybrid_retrieval", True)
+        kw.setdefault("reranker_model", "BAAI/bge-reranker-v2-m3")
+        kw.setdefault("require_real_models", True)
+        return cls(target_brand=target_brand,
+                   industry_topics=industry_topics,
+                   competitor_entities=competitor_entities, **kw)
