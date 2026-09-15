@@ -1,8 +1,13 @@
 """Progress heartbeats: silent CPU phases must move the web bar monotonically."""
 import os
 
+import pytest
+
 
 def _prog(msgs):
+    # Web tests need flask, which CI's light fast-test env deliberately omits:
+    # skip (don't fail) when it isn't installed.
+    pytest.importorskip("flask", reason="web progress tests need flask")
     from ragevda import webapp as w
     job = {"status": "running", "progress": 0, "stage": ""}
     out = []
@@ -35,6 +40,7 @@ def test_heartbeat_keywords_bump_progress():
 
 
 def test_done_job_ignores_late_logs():
+    pytest.importorskip("flask", reason="web progress tests need flask")
     from ragevda import webapp as w
     job = {"status": "done", "progress": 100, "stage": "Complete"}
     w._progress_from_msg(job, "fetching something")
