@@ -654,6 +654,32 @@ class RunConfig:
                 self.embedding_model = LEGACY_EMBEDDING_MODEL
             self.use_hybrid_retrieval = False
             self.reranker_model = ""
+            # LITE scope clamps: a 512MB box OOMs on FULL-sized corpora
+            # (torch + MiniLM + spaCy + 8 concurrent fetches + numpy
+            # matrices). Bound the blast radius so the audit completes
+            # instead of getting OOM-killed mid-run. Explicit operator
+            # values below the caps are respected; anything above is
+            # clamped loudly (never silently).
+            _clamps = (
+                ("crawl_depth", 20),
+                ("max_pages", 60),
+                ("max_search_queries", 30),
+                ("max_concurrency", 4),
+            )
+            for _name, _cap in _clamps:
+                try:
+                    _cur = int(getattr(self, _name))
+                except (TypeError, ValueError):
+                    continue
+                if _cur == 0 or _cur > _cap:
+                    # max_pages/max_search_queries treat 0 as unlimited,
+                    # which is never safe on LITE — clamp those too.
+                    logger.warning(
+                        "RAGEVDA_LITE: clamping %s=%s to %s (512MB box; "
+                        "unset RAGEVDA_LITE for full scope)",
+                        _name, _cur, _cap,
+                    )
+                    setattr(self, _name, _cap)
             if not getattr(self, "answer_harvester", "off") or \
                     getattr(self, "answer_harvester", "off") == "off":
                 pass  # stay off without paid keys; UI guides to multi
