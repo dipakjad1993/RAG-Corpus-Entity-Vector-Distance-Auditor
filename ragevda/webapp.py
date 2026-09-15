@@ -504,6 +504,18 @@ body{font-family:var(--m3-font,Google Sans,Roboto Flex,system-ui,-apple-system,'
       </div>
       <div class="m3-field-grid" style="margin-top:12px">
         <div>
+          <label class="m3-fieldlabel">Max pages to fetch (0 = unlimited)</label>
+          <input type="number" name="max_pages" value="200" min="0" max="10000" class="m3-input">
+          <div class="hint" style="margin:4px 0 0;font-size:11px;">Hard page-fetch cap. 200 keeps free-tier RAM safe; 0 removes all restrictions (needs a big box — each page costs fetch + embed RAM/time).</div>
+        </div>
+        <div>
+          <label class="m3-fieldlabel">Max search queries (0 = unlimited)</label>
+          <input type="number" name="max_search_queries" value="120" min="0" max="10000" class="m3-input">
+          <div class="hint" style="margin:4px 0 0;font-size:11px;">Bounds outbound live-search calls (primary topic + brand/competitor queries are always preserved).</div>
+        </div>
+      </div>
+      <div class="m3-field-grid" style="margin-top:12px">
+        <div>
           <label class="m3-fieldlabel">9) Target Embedding Model Selection</label>
           <input type="text" name="embedding_model" value="sentence-transformers/all-MiniLM-L6-v2" class="m3-input">
           <div class="hint" style="margin:4px 0 0;font-size:11px;">Pick the embedding architecture matching the AI engine's vector space (e.g. <code class="m3-code">bge-large-en-v1.5</code>, <code class="m3-code">all-MiniLM-L6-v2</code>). Operator supplies a local model.</div>
@@ -1146,6 +1158,10 @@ def render_schedules_page() -> str:
             <input name="crawl_depth" value="50" style="width:80px"></div>
           <div><label>Locality</label><br>
             <input name="locality" value="US" style="width:80px"></div>
+          <div><label>Max pages (0 = unlimited)</label><br>
+            <input type="number" name="max_pages" value="200" min="0" style="width:90px"></div>
+          <div><label>Max queries (0 = unlimited)</label><br>
+            <input type="number" name="max_search_queries" value="120" min="0" style="width:90px"></div>
         </div>
         <div class="inline">
           <div><label>SearXNG base URL</label><br>
@@ -1254,6 +1270,8 @@ def create_app() -> Flask:
             "target_entity_density": _parse_float(form.get("target_entity_density"), 0.015),
             "top_k_retrieval": _parse_int(form.get("top_k_retrieval"), 5),
             "synthetic_query_count": _parse_int(form.get("synthetic_query_count"), 12),
+            "max_pages": _parse_int(form.get("max_pages"), 200),
+            "max_search_queries": _parse_int(form.get("max_search_queries"), 120),
             "ollama_base_url": form.get("ollama_base_url") or "",
             "ollama_model": form.get("ollama_model") or "llama3",
         }
@@ -1496,6 +1514,8 @@ def create_app() -> Flask:
                 spacy_model="en_core_web_sm",
                 auto_threshold=_parse_bool(form.get("auto_threshold"), True),
                 high_relevance_threshold=0.70,
+                max_pages=_parse_int(form.get("max_pages"), 200),
+                max_search_queries=_parse_int(form.get("max_search_queries"), 120),
             )
             SCHEDULER.add(sched)
             return redirect("/schedules")

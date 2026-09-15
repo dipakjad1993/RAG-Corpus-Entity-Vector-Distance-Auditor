@@ -378,6 +378,10 @@ class RunConfig:
             raise ValueError("answer_repeats must be in [1, 10] (5-10 recommended for noise sampling)")
         if not 1 <= self.prompt_volume <= 20:
             raise ValueError("prompt_volume must be in [1, 20]")
+        if self.max_pages < 0:
+            raise ValueError("max_pages must be >= 0 (0 = unlimited)")
+        if self.max_search_queries < 0:
+            raise ValueError("max_search_queries must be >= 0 (0 = unlimited)")
         for v in ("eval_faithfulness_min", "eval_answer_relevancy_min",
                   "eval_context_precision_min", "eval_context_recall_min"):
             if not 0.0 <= getattr(self, v) <= 1.0:

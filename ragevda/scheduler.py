@@ -52,6 +52,8 @@ class Schedule:
     search_intent: str = "informational"
     chunk_tokens: int = 512
     chunk_overlap_tokens: int = 64
+    max_pages: int = 200               # 0 = unlimited page fetches
+    max_search_queries: int = 120      # 0 = unlimited search calls
     engine_matrix: List[str] = field(default_factory=lambda: [
         "Google AI Overviews", "SearchGPT", "Gemini", "Perplexity", "Bing Copilot"])
     last_run: Optional[str] = None
@@ -97,8 +99,8 @@ class Schedule:
             "require_real_models": True,
             "use_llm": True,
             "dedupe_near": True,
-            "max_pages": 200,
-            "max_search_queries": 120,
+            "max_pages": self.max_pages,
+            "max_search_queries": self.max_search_queries,
             "drift_history_keep": 60,
         }
 

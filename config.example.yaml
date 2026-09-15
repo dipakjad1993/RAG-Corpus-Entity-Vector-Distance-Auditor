@@ -20,7 +20,8 @@ competitor_entities:
 
 # ---- Harvesting settings ----
 crawl_depth: 50                    # Pages per search query (1-200)
-max_search_queries: 120            # Bounds live search calls
+max_search_queries: 120            # Bounds live search calls (0 = unlimited; primaries preserved)
+max_pages: 200                     # Max web pages fetched, 0 = unlimited (needs a big box: RAM+time per page)
 locality: null                     # e.g. "US", "UK", null for global
 harvester: "multi"                 # multi | searxng | duckduckgo (fallback-only) | file | answers
 searxng_base_url: null             # Self-hosted SearXNG (primary live source when set)
