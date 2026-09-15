@@ -97,6 +97,10 @@ def _get_transformer_pipeline():
                         LEGACY_TRANSFORMER_MODEL, local_files_only=True)
             except Exception:
                 # 2) first-ever run: allow one network download, then cache.
+                logger.info(
+                    "downloading sentiment model %s (~600MB, one-time) — "
+                    "this phase takes several minutes and is silent; "
+                    "later runs load offline instantly", TRANSFORMER_MODEL)
                 if _prev is None:
                     _os.environ.pop("HF_HUB_OFFLINE", None)
                 else:
@@ -314,14 +318,23 @@ def analyze_sentiment(docs, config, windows_by_doc=None) -> Dict:
                 })
 
     if pipeline is not None:
-        # Pre-score all unique windows in one transform batch.
+        # Pre-score all unique windows in transformer sub-batches (identical
+        # math to one call, bounded RAM) with heartbeat logs — hundreds of
+        # windows on CPU is otherwise many silent minutes on the progress bar.
         unique_texts = []
         index = {}
         for i, t in enumerate(targets):
             if t["text"] not in index:
                 index[t["text"]] = len(unique_texts)
                 unique_texts.append(t["text"])
-        scores = _classify_batch(pipeline, unique_texts)
+        logger.info("scoring sentiment for %d mention windows (%d unique)",
+                    len(targets), len(unique_texts))
+        scores: List[Tuple[str, float]] = []
+        _SB = 256
+        for s in range(0, len(unique_texts), _SB):
+            scores.extend(_classify_batch(pipeline, unique_texts[s:s + _SB]))
+            done = min(s + _SB, len(unique_texts))
+            logger.info("sentiment scored %d/%d windows", done, len(unique_texts))
         for t in targets:
             label, val = scores[index[t["text"]]]
             pol = 0.0

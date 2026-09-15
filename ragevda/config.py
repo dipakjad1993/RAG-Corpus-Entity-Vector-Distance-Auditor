@@ -662,6 +662,20 @@ class RunConfig:
             self.reranker_model = ""
         if _os.getenv("RAGEVDA_ALLOW_FALLBACK") == "1":
             self.require_real_models = False
+        # Fetch tuning (slow-host stalls dominate wall time: 20s timeout x2
+        # retries per page across max_concurrency workers).
+        _ft = _os.getenv("RAGEVDA_FETCH_TIMEOUT")
+        if _ft:
+            try:
+                self.request_timeout = max(5, int(_ft))
+            except (TypeError, ValueError):
+                pass
+        _mc = _os.getenv("RAGEVDA_MAX_CONCURRENCY")
+        if _mc:
+            try:
+                self.max_concurrency = min(32, max(1, int(_mc)))
+            except (TypeError, ValueError):
+                pass
         return self
 
     @classmethod

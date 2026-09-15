@@ -104,6 +104,11 @@ _PROGRESS_RULES = [
     ("wrote JSON report", 94, "Generating JSON report"),
     ("audit complete", 99, "Finalizing results"),
     ("context built", 85, "Building graphs & metrics"),
+    ("sentiment scored", 92, "Auditing brand sentiment"),
+    ("scoring sentiment", 90, "Auditing brand sentiment"),
+    ("entity centroid", 84, "Building entity centroids"),
+    ("scanned mentions", 78, "Scanning entity mentions"),
+    ("chunked", 76, "Chunking documents"),
     ("embedded", None, "Embedding documents"),  # special-cased below
     ("embedding", 80, "Embedding documents"),
     ("building analysis context", 75, "Analyzing semantics"),

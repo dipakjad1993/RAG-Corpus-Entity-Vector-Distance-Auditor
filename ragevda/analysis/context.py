@@ -74,7 +74,7 @@ def build_context(config, docs: List[Document], embedder: Embedder,
     doc_chunks: Dict[str, List[str]] = {}
     doc_chunk_vecs: Dict[str, List[np.ndarray]] = {}
 
-    for doc in docs:
+    for i, doc in enumerate(docs, 1):
         chunks = chunk_text(doc.text, max_chars=config.sentence_chunk_chars)
         if not chunks:
             continue
@@ -83,6 +83,8 @@ def build_context(config, docs: List[Document], embedder: Embedder,
             all_chunks.append(ch)
             chunk_owner.append(doc.doc_id)
         doc_chunk_vecs[doc.doc_id] = []
+        if i % 50 == 0 or i == len(docs):
+            logger.info("chunked %d/%d docs (%d chunks so far)", i, len(docs), len(all_chunks))
 
     ctx = AnalysisContext(
         config=config, docs=docs, cooccur=cooccur,
@@ -129,8 +131,9 @@ def build_context(config, docs: List[Document], embedder: Embedder,
 
     # 4. Co-occurrence + mention scanning per document ---------------
     # NER patterns built ONCE and reused (no per-doc rebuild); chunk lists
-    # reused from the single chunking pass above (no re-chunk).
-    for doc in docs:
+    # reused from the single chunking pass above (no re-chunk). Heartbeat
+    # logs keep the web progress bar moving through this silent CPU phase.
+    for i, doc in enumerate(docs, 1):
         chunks = doc_chunks.get(doc.doc_id) or []
         # count mentions across whole doc text
         counts = NER.find_mentions(doc.text, patterns, alias_to_entity)
@@ -147,8 +150,13 @@ def build_context(config, docs: List[Document], embedder: Embedder,
                     entity_chunks[orig].append(ch)
         # co-occurrence graph (only real brand/competitor names as nodes)
         cooccur.add_document(doc.doc_id, doc.text, focus_entities=focus)
+        if i % 25 == 0 or i == len(docs):
+            logger.info("scanned mentions %d/%d docs", i, len(docs))
 
     # 5. Entity centroids + name vectors -----------------------------
+    # Centroid encodes are batched (identical math, bounded RAM) with a
+    # per-entity heartbeat — thousands of mention-chunks through a CPU
+    # model is otherwise minutes of silence on the progress bar.
     for ent in focus:
         stats = EntityStats(name=ent)
         stats.docs_mentioned = entity_doc_count.get(ent, 0)
@@ -156,7 +164,10 @@ def build_context(config, docs: List[Document], embedder: Embedder,
         stats.name_vec = embedder.encode([ent])[0]
         chunks = entity_chunks.get(ent, [])
         if chunks:
-            vecs = embedder.encode(chunks)
+            logger.info("entity centroid: %s (%d chunks)", ent, len(chunks))
+            parts = [embedder.encode(chunks[s:s + 64])
+                     for s in range(0, len(chunks), 64)]
+            vecs = parts[0] if len(parts) == 1 else np.concatenate(parts, axis=0)
             stats.centroid = np.mean(vecs, axis=0)
         else:
             # fall back to name-only vector when never mentioned in corpus
