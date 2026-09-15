@@ -33,10 +33,12 @@ include_news: true
 brave_api_key: null
 tavily_api_key: null
 exa_api_key: null
-# First-class UGC corpus (earned media is ~80-90% of AI answers)
+# Core UGC corpus: Reddit + YouTube (earned media is ~80-90% of AI answers).
+# TikTok is an OPT-IN plugin only (fragile/auth-walled scraper; use a paid
+# SERP API) — never a core promise.
 ugc_reddit: true
 ugc_youtube: true
-ugc_tiktok: true
+ugc_tiktok: false
 
 # ---- NLP / embedding models (local, zero-cost) ----
 # FULL profile (paid 2GB+ / workstation): nomic-embed-text-v1.5 (137M,
@@ -55,7 +57,7 @@ use_hybrid_retrieval: true         # BM25 + dense cosine + cross-encoder rerank 
 output_dir: "./ragevda_output"
 
 # ---- Enterprise / AI-engine inputs (all optional, sensible defaults) ----
-search_intent: "informational"     # informational | transactional | comparison | research | local
+search_intent: "informational"     # informational | transactional | comparison | research | local | qa
 query_templates: null              # Override intent template set
 # Ontology aliases / sub-brands extend NER + query expansion
 ontology_aliases: {}
@@ -93,7 +95,8 @@ engine_matrix:
   - "DeepSeek"
 # Semantic drift history retention (runs)
 drift_history_keep: 60
-# Synthetic query generator
+# Synthetic query generator (LEGACY — forward-tracked prompt library is
+# default; kept for back-compat only)
 synthetic_query_count: 12
 # Optional local Ollama LLM for gap-analysis rationales
 use_llm: true
@@ -107,7 +110,7 @@ ollama_model: "llama3"
 # answer_repeats: 5-10. Cost guide: Brave behavioral + cheap, Tavily per-call,
 # Exa neural — set keys via env (BRAVE_API_KEY / TAVILY_API_KEY / EXA_API_KEY),
 # never commit keys. Without paid keys you get simulated SoV (triage only).
-answer_harvester: "off"
+answer_harvester: "multi"
 answer_repeats: 5                  # 5-10x per prompt (probabilistic noise sampling)
 
 # ---- P0: Prompt library + personas (forward-track real prompts) ----
@@ -116,8 +119,9 @@ prompt_frames: ["informational", "transactional", "comparison"]
 personas: ["default"]
 prompt_volume: 5                   # repeats per prompt frame x persona
 
-# ---- P0: llms.txt + MCP (agent discoverability) ----
-generate_llms_txt: true
+# ---- P2 hygiene: llms.txt + MCP (coding agents only; zero AIO/ranking
+# effect per Google May-2026 guide; off by default) ----
+generate_llms_txt: false
 site_base_url: null                # e.g. "https://yourcompany.com"
 mcp_tools: ["get_pricing", "check_stock"]
 

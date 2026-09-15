@@ -55,3 +55,19 @@ jobs:
 
       - name: CLI boots
         run: python -m ragevda.cli --version
+
+  version-check:
+    name: Single-source version check (README == version.py == pyproject)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Version consistency
+        run: |
+          python - <<'EOF'
+          import re, pathlib
+          ver = re.search(r'__version__\s*=\s*"([^"]+)"', pathlib.Path("ragevda/version.py").read_text()).group(1)
+          assert f'version = "{ver}"' in pathlib.Path("pyproject.toml").read_text(), "pyproject mismatch"
+          readme = pathlib.Path("README.md").read_text()
+          assert ver in readme, f"README missing version {ver}"
+          print(f"version OK: {ver}")
+          EOF

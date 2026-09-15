@@ -230,3 +230,79 @@ def per_topic_trend_chart(runs: List[RunRecord], topic: str) -> str:
         for l in labels
     )
     return svg + f"<div style='display:flex;margin-left:44px'>{xticks}</div>"
+
+
+# ---------------------------------------------------------------------------
+# P0-5: Prompt Volumes + daily tracking (Profound's killer = demand per topic)
+# ---------------------------------------------------------------------------
+def prompt_volume_weights(prompts: List[Dict], default: int = 5) -> Dict[str, float]:
+    """Weight each prompt by traffic volume (prompt_volume field or default).
+
+    Returns {prompt_text: normalized_weight}. Weights sum to 1. Pure math on
+    the REAL prompt library — never invented demand.
+    """
+    ws = []
+    for p in (prompts or []):
+        if isinstance(p, dict):
+            ws.append((p.get("text", "") or p.get("prompt", ""), float(p.get("volume", default) or default)))
+        else:
+            ws.append((str(p), float(default)))
+    total = sum(w for _, w in ws) or 1.0
+    return {t: round(w / total, 4) for t, w in ws if t}
+
+
+def daily_timeseries_path(jobs_dir: str = DEFAULT_JOBS_DIR) -> str:
+    return os.path.join(os.path.dirname(jobs_dir.rstrip("/\\")) or ".", "drift_timeseries.duckdb")
+
+
+def record_daily_snapshot(report: Dict, db_path: str = "") -> Dict:
+    """Append today's visibility/SoV snapshot to the drift DuckDB (cron-safe).
+
+    Called at the end of every audit + by the scheduler daily cron. Fail-open.
+    """
+    try:
+        import sqlite3
+        path = db_path or "web_output/drift_timeseries.duckdb"
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        meta = (report or {}).get("meta", {})
+        inv = (report or {}).get("invisibility", {})
+        con = sqlite3.connect(path)
+        con.execute("CREATE TABLE IF NOT EXISTS daily (day TEXT, brand TEXT, sov REAL, invis REAL, docs INT)")
+        con.execute("INSERT INTO daily VALUES (?,?,?,?,?)",
+                    (str(meta.get("generated_at", ""))[:10],
+                     str((meta.get("config", {}) or {}).get("target_brand", "")),
+                     float(inv.get("composite_vector_share_of_voice_pct", 0.0) or 0.0),
+                     float(inv.get("composite_invisibility_index_pct", 0.0) or 0.0),
+                     int((meta.get("context_stats", {}) or {}).get("doc_count", 0) or 0)))
+        con.commit()
+        con.close()
+        return {"recorded": True, "db": path}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("daily snapshot skipped: %s", exc)
+        return {"recorded": False, "error": str(exc)}
+
+
+def drift_alert(report: Dict, prev_sov: float = 0.0, threshold: float = 5.0) -> Dict:
+    """ETS-lite drift alert: fire when composite SoV moves >= threshold.
+
+    Posts to Slack via attribution.post_slack_alert when configured.
+    """
+    try:
+        inv = (report or {}).get("invisibility", {})
+        sov = float(inv.get("composite_vector_share_of_voice_pct", 0.0) or 0.0)
+        delta = round(sov - prev_sov, 2)
+        fire = abs(delta) >= threshold and prev_sov != 0.0
+        out = {"sov": sov, "prev_sov": prev_sov, "delta": delta,
+               "alert": bool(fire), "threshold": threshold}
+        if fire:
+            try:
+                from .attribution import post_slack_alert
+
+                class _C:
+                    drift_webhook_url = os.environ.get("SLACK_WEBHOOK_URL", "")
+                out["slack"] = post_slack_alert(_C(), f"RAG-EVDA drift: SoV {prev_sov}->{sov} (Δ{delta})")
+            except Exception as exc:  # noqa: BLE001
+                out["slack"] = {"posted": False, "error": str(exc)}
+        return out
+    except Exception as exc:  # noqa: BLE001
+        return {"alert": False, "error": str(exc)}

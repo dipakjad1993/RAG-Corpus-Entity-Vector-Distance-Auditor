@@ -41,11 +41,11 @@ class Schedule:
     enabled: bool = True
     depth: int = 50
     locality: Optional[str] = None
-    harvester: str = "duckduckgo"
+    harvester: str = "multi"
     prefer_searxng: bool = False
     searxng_base_url: Optional[str] = None
     corpus_dir: Optional[str] = None
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_model: str = "nomic-ai/nomic-embed-text-v1.5"
     spacy_model: str = "en_core_web_sm"
     auto_threshold: bool = True
     high_relevance_threshold: float = 0.70
@@ -55,7 +55,8 @@ class Schedule:
     max_pages: int = 200               # 0 = unlimited page fetches
     max_search_queries: int = 120      # 0 = unlimited search calls
     engine_matrix: List[str] = field(default_factory=lambda: [
-        "Google AI Overviews", "SearchGPT", "Gemini", "Perplexity", "Bing Copilot"])
+        "Google AI Overviews", "Google AI Mode", "ChatGPT", "Gemini", "Claude",
+        "Perplexity", "Bing Copilot", "Grok", "Meta AI", "DeepSeek"])
     last_run: Optional[str] = None
     last_job: Optional[str] = None
     created_at: str = field(
@@ -174,23 +175,33 @@ class Scheduler:
             threading.Event().wait(20)
 
     def tick(self) -> List[str]:
-        """Fire any enabled schedules whose next_run is due. Returns job ids."""
+        """Fire any enabled schedules whose next_run is due. Returns job ids.
+
+        Race-safe: the due-set is snapshotted under the lock, the callback
+        runs OUTSIDE the lock (never hold a lock across user code / network),
+        and per-schedule mutations (last_run/last_job) are applied back UNDER
+        the lock so concurrent ticks cannot interleave or double-fire.
+        """
         if not self._callback:
             return []
         fired: List[str] = []
         now = datetime.now(timezone.utc)
         with self._lock:
-            due = [s for s in self._schedules.values()
-                   if s.enabled and (s.next_run() or now) <= now]
-        for s in due:
+            due_ids = [s.id for s in self._schedules.values()
+                       if s.enabled and (s.next_run() or now) <= now]
+            profiles = {sid: self._schedules[sid].profile() for sid in due_ids
+                        if sid in self._schedules}
+        for sid in due_ids:
             try:
-                job = self._callback(s.profile())
-                s.last_run = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                s.last_job = job
+                job = self._callback(profiles[sid])
+                stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 with self._lock:
-                    self._save()
+                    if sid in self._schedules:
+                        self._schedules[sid].last_run = stamp
+                        self._schedules[sid].last_job = job
+                        self._save()
                 fired.append(job or "")
-                logger.info("scheduled run fired for %s -> job %s", s.name, job)
+                logger.info("scheduled run fired for %s -> job %s", sid, job)
             except Exception as exc:  # noqa: BLE001
-                logger.warning("scheduled run failed (%s): %s", s.name, exc)
+                logger.warning("scheduled run failed (%s): %s", sid, exc)
         return fired

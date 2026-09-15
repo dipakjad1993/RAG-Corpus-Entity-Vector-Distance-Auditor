@@ -468,14 +468,14 @@ body{font-family:var(--m3-font,Google Sans,Roboto Flex,system-ui,-apple-system,'
       </div>
       <div class="m3-field-grid" style="margin-top:12px">
         <div>
-          <label class="m3-fieldlabel">Search intent</label>
+          <label class="m3-fieldlabel">Search intent (2026 standard: informational/transactional/comparison/research/local/qa)</label>
           <select name="search_intent" class="m3-input">
             <option value="informational" selected>Informational</option>
-            <option value="commercial">Commercial</option>
-            <option value="navigational">Navigational</option>
             <option value="transactional">Transactional</option>
             <option value="comparison">Comparison</option>
+            <option value="research">Research</option>
             <option value="local">Local</option>
+            <option value="qa">Q&A</option>
           </select>
         </div>
         <div>

@@ -1,9 +1,10 @@
-"""First-class UGC harvesters: Reddit / YouTube / TikTok.
+"""Core UGC harvesters: Reddit + YouTube (first-class). TikTok OPTIONAL plugin.
 
 46.7% of Perplexity top sources = Reddit; 80-90% of AI answers cite earned
-media (2.5x vs owned). Ignoring UGC makes the invisibility index lie. Each
-harvester returns :class:`Document` lists (fail-open: empty on no network/key)
-and respects robots.txt + SSRF guards.
+media (2.5x vs owned). Reddit + YouTube are core (stable JSON/transcripts).
+TikTok SERP scraping is fragile/auth-walled/TOS-risk: kept as an OPT-IN
+plugin (ugc_tiktok=False default; use a paid SERP API) — never a core promise.
+Each harvester returns :class:`Document` lists (fail-open) with robots+SSRF guards.
 """
 from __future__ import annotations
 

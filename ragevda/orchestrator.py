@@ -94,36 +94,52 @@ def _harvest_or_fallback(config, queries, depth) -> tuple:
 
     if kind in ("multi", "answers"):
         # Paid-API fan-out first (Brave/Tavily/Exa), then SearXNG, then DDG.
-        from .harvester.paid_search import multi_search
+        # 2026 fix: fan out over ALL queries (RRF-merged), not queries[0].
+        from .harvester.paid_search import multi_search_all
         from .harvester.base import new_document
         from .harvester.cleaner import extract_text
-        paid = multi_search(queries[0] if queries else "", config, depth) if queries else []
+        import os as _os
+        _fanout_cap = int(_os.environ.get("RAGEVDA_FANOUT_QUERIES", "20") or 20)
+        try:
+            paid = multi_search_all(list(queries or []), config, depth,
+                                    max_queries=_fanout_cap) if queries else []
+        except Exception:  # noqa: BLE001
+            paid = []
         docs = []
         if paid:
             from .utils import HttpClient
+            from concurrent.futures import ThreadPoolExecutor
+            _cap = int(getattr(config, "max_pages", 0) or 0) or len(paid)
+            targets = paid[:max(1, min(len(paid), _cap))]
             c = HttpClient(timeout=config.request_timeout,
                            user_agent=config.user_agent, proxy=config.proxy,
                            allowlist=getattr(config, "fetch_allowlist", None) or None)
             try:
-                for url, title, snippet in paid[:depth]:
+                def _fetch(item):
+                    url, title, snippet = item
                     try:
                         from .harvester.base import robots_allowed
                         if not robots_allowed(url, config.user_agent):
-                            continue
+                            return None
                         r = c.get(url)
                         if r.status_code != 200:
-                            continue
+                            return None
                         try:
                             text = extract_text(r.text, url=url) or snippet
                         except Exception:  # noqa: BLE001
                             text = snippet
-                        docs.append(new_document(url, title or url, "web",
-                                                 queries[0] if queries else "",
-                                                 text=text or snippet,
-                                                 final_url=str(r.url),
-                                                 http_status=r.status_code))
+                        return new_document(url, title or url, "web",
+                                            (queries[0] if queries else ""),
+                                            text=text or snippet,
+                                            final_url=str(r.url),
+                                            http_status=r.status_code)
                     except Exception:  # noqa: BLE001
-                        continue
+                        return None
+                workers = min(8, max(1, int(getattr(config, "max_concurrency", 8) or 8)))
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    for doc in pool.map(_fetch, targets):
+                        if doc is not None:
+                            docs.append(doc)
             finally:
                 c.close()
             if docs:
@@ -555,11 +571,14 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
     write_rag_brief(os.path.join(out_dir, "rag_content_brief.md"), report)
     write_jsonld(os.path.join(out_dir, "schema_jsonld_patch.json"), report)
     # Consolidated enterprise outputs: llms.txt + agent.json + MCP manifest.
-    try:
-        from .reporting.llms import write_llms_outputs
-        write_llms_outputs(out_dir, report, config)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("llms.txt/MCP outputs skipped: %s", exc)
+    # P2 hygiene ONLY (zero AIO/ranking effect per Google 2026): gated behind
+    # generate_llms_txt (default False).
+    if getattr(config, "generate_llms_txt", False):
+        try:
+            from .reporting.llms import write_llms_outputs
+            write_llms_outputs(out_dir, report, config)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("llms.txt/MCP outputs skipped: %s", exc)
     # Closed-loop execution bundle: action_plan + wp_drafts.
     try:
         from .reporting.action_plan import write_action_plan

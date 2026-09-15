@@ -2,6 +2,30 @@
 
 All notable changes to RAG-EVDA. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.2.0] — 2026-09-15 — Enterprise GEO-depth release
+
+### Fixed
+- Paid-API fan-out covers ALL queries: `multi_search_all()` (ThreadPool batch,
+  RRF-merged, `RAGEVDA_FANOUT_QUERIES=20` cap) + concurrent fetching bounded by
+  `max_pages`/`max_concurrency`. Previously only `queries[0]` reached
+  Brave/Tavily/Exa.
+- Scheduler tick race: due-set snapshotted under lock, callback runs outside
+  the lock, `last_run`/`last_job` re-applied under lock (no double-fire).
+- GEO-real defaults: `harvester: multi`, `answer_harvester: multi`;
+  6 standard intents (commercial/navigational legacy-only); TikTok opt-in
+  plugin (`ugc_tiktok: false`); `generate_llms_txt: false` (P2 hygiene).
+
+### Added
+- 10 P0 engines in `advanced`: `citation_reverse` (passage-BERT stealer,
+  >0.88 steal), `fanout_coverage` (cluster map), `eeat` (gate, <50 CRITICAL),
+  `entity_gain` (15+ entities/page scorer), `reddit_topics` (subreddit
+  extractor), `media` (image/video/Merchant/GBP), `multilingual` (per-doc lang
+  + geo gaps), `white_label` + `mcp_tools`, prompt volumes + daily snapshots +
+  drift alerts in `tracking.py`, `probe_infer.py` + `deep_sections.py` splits.
+- `docs/EMBEDDINGS.md`, `docs/SERVING.md`, `docs/SCOPE_2026.md`; CI
+  `version-check` job; `config.example.yaml` synced to new defaults.
+- Tests: `tests/test_enterprise_p0.py` (10 tests). Suite: 59 passed, 9 skipped.
+
 ## [2.1.1] — 2026-09-15 — Audit-always-completes release
 
 ### Fixed

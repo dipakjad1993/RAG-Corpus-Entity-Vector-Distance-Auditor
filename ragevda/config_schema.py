@@ -29,8 +29,8 @@ def validate_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         industry_topics: List[str] = Field(min_length=1, max_length=20)
         competitor_entities: List[str] = Field(min_length=1, max_length=15)
         crawl_depth: int = Field(default=50, ge=1, le=200)
-        harvester: str = "duckduckgo"
-        answer_harvester: str = "off"
+        harvester: str = "multi"
+        answer_harvester: str = "multi"
         answer_repeats: int = Field(default=5, ge=1, le=10)
         prompt_volume: int = Field(default=5, ge=1, le=20)
         eval_faithfulness_min: float = Field(default=0.75, ge=0.0, le=1.0)

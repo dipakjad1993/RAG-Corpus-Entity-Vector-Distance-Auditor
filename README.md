@@ -4,7 +4,7 @@
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 ![Local-only](https://img.shields.io/badge/LLM-100%25%20local-orange)
-![Version](https://img.shields.io/badge/version-2.1.1-black)
+![Version](https://img.shields.io/badge/version-2.2.0-black)
 [![Live demo](https://img.shields.io/badge/demo-live%20on%20Render-brightgreen)](https://rag-corpus-entity-vector-distance-auditor.onrender.com/)
 
 > **Try it live:** https://rag-corpus-entity-vector-distance-auditor.onrender.com/
@@ -25,6 +25,33 @@ competitors — with **zero OpenAI / Ahrefs / Semrush / BrightEdge API keys** an
 | | | |
 |---|---|---|
 |  **125 docs** audited in the reference Guardian run |  **$0** API cost, forever |  **Full output bundle** per run (JSON + HTML + DuckDBs + brief + action plan + WebMCP + Looker) |
+
+### What's new in v2.2.0 — Enterprise GEO-depth release
+
+- **Real multi-query paid fan-out** — `multi_search_all()` fans out over ALL
+  queries (ThreadPool batch, RRF-merged, `RAGEVDA_FANOUT_QUERIES=20` cap) with
+  concurrent fetching. Previously only `queries[0]` reached Brave/Tavily/Exa.
+- **Sane GEO defaults** — `harvester: multi` + `answer_harvester: multi` out of
+  the box (DDG is fallback-only); standard intent set
+  (`informational/transactional/comparison/research/local/qa`,
+  `commercial`/`navigational` legacy-only); TikTok demoted to opt-in plugin
+  (`ugc_tiktok: false`, Reddit + YouTube stay core); `generate_llms_txt: false`
+  (P2 hygiene — zero AIO effect per Google May-2026).
+- **10 new P0 analysis engines** (all real-data, fail-open, in `advanced`):
+  passage-BERT citation stealer (`citation_reverse`, >0.88 steal), fan-out
+  coverage map (`fanout_coverage`), E-E-A-T gate (`eeat`, <50 CRITICAL),
+  entity-density + Information Gain scorer (`entity_gain`, 15+ entities/page),
+  subreddit topic extractor (`reddit_topics`), image/video/Merchant/GBP checks
+  (`media`), per-doc language + geo-variant report (`multilingual`),
+  white-label header + corpus-evidenced MCP tools, prompt-volume weighting +
+  daily snapshots + drift alerts (`tracking`), probe-inference split
+  (`probe_infer`) + deep-analysis sections (`deep_sections`).
+- **Race-safe scheduler** — due-set snapshot under lock, callback outside the
+  lock, mutations re-applied under lock; 10-engine matrix + nomic defaults.
+- **Docs + version safety** — `docs/EMBEDDINGS.md` (nomic default + latency
+  table), `docs/SERVING.md` (FastAPI-only enterprise path), `docs/SCOPE_2026.md`
+  (what was demoted and why), CI `version-check` (README == version.py ==
+  pyproject). Full suite: **59 passed, 9 skipped**.
 
 ### What's new in v2.1.1 — Audit-always-completes release
 
@@ -222,7 +249,8 @@ guidelines, and the project's About + tags.**
 ## Table of Contents
 
 1. [Why it exists](#why-it-exists)
-2. [What's new in v2.1.1](#whats-new-in-v211--audit-always-completes-release)
+2. [What's new in v2.2.0](#whats-new-in-v220--enterprise-geo-depth-release)
+3. [What's new in v2.1.1](#whats-new-in-v211--audit-always-completes-release)
 3. [What's new in v2.1.0](#whats-new-in-v210--lite--visibility--closed-loop-release)
 4. [What's new in v2.0.0](#whats-new-in-v200--enterprise-geo-release)
 5. [What's new in v1.3.0](#whats-new-in-v130--enterprise-experience-release)
@@ -369,7 +397,7 @@ publication) to close the gap.
 | 19 | Local-LLM gap analysis (Ollama) | Free-text rationale built only from real audited metrics |
 | 20 | Auto-fallback & resilience | Paid-API → SearXNG → DDG chain, real-model fallback, robots.txt + SSRF guard, never fake data |
 | 21 | Live LLM answer harvester | Real answer-engine citations + answer text per prompt (GEO) |
-| 22 | First-class UGC corpus | Reddit / YouTube transcripts / TikTok documents in every audit |
+| 22 | Core UGC corpus | Reddit + YouTube transcripts in every audit (TikTok opt-in plugin only) |
 | 23 | Hybrid retrieval | BM25 + dense RRF fusion + cross-encoder rerank |
 | 24 | Prompt library + personas | Forward-tracked real prompts (frames × personas × geo × volume) |
 | 25 | llms.txt + MCP | Agent-discoverability files from real report data |
@@ -418,7 +446,7 @@ python -c "from transformers import AutoTokenizer, AutoModelForSequenceClassific
 python -m ragevda.cli --version   # → ragevda 2.1.1
 
 # 6. run the quality gates (unit + enterprise GEO gates)
-python -m pytest tests/ --geo -q  # → 48 passed
+python -m pytest tests/ --geo -q  # → 59 passed, 9 skipped
 ```
 
 > **Resilience guarantee.** If you request an embedding or NER model that is not
@@ -487,7 +515,7 @@ The web UI exposes **11 configuration inputs** on one form:
 3. `competitor_entities` — direct competitors
 4. `crawl_depth` — results per query
 5. `locality` — geo target
-6. `search_intent` — informational / transactional / comparison / research / local / commercial / navigational
+6. `search_intent` — informational / transactional / comparison / research / local / qa
 7. `entity_weighting` — per-entity importance
 8. `corpus_files` — owned ground-truth corpus
 9. `embedding_model` — sentence-transformers checkpoint
@@ -508,7 +536,7 @@ guard (no private/loopback hosts, validated redirect chain, optional
 
 ```bash
 uvicorn ragevda.api:app --host 127.0.0.1 --port 9000
-# GET  /health               → {"ok": true, "version": "2.1.1"}
+# GET  /health               → {"ok": true, "version": "2.2.0"}
 # POST /jobs                 → {"job_id": ...}  (X-API-Key header)
 # GET  /jobs/{id}            → status/progress/logs
 # GET  /jobs/{id}/report     → full report.json
@@ -606,7 +634,7 @@ report = run(cfg)
 | `entity_domains` | `Dict[str, List[str]]` | Owned domains per entity — a doc on that domain counts as a genuine mention. |
 | `entity_weighting` | `Dict[str, float]` | Relative importance (e.g. brand at 1.5× a competitor). |
 | `ontology_aliases` | `Dict[str, List[str]]` | Sub-brands / product modules / patents owned by an entity; merged into alias mention map. |
-| `search_intent` | `str` | Retrieval surface to optimize: `informational` / `transactional` / `comparison` / `research` / `local` / `commercial` / `navigational`. |
+| `search_intent` | `str` | Retrieval surface: `informational` / `transactional` / `comparison` / `research` / `local` / `qa` (`commercial`/`navigational` legacy back-compat only). |
 | `query_templates` | `Dict[str, str]` | Custom templates per intent; `{topic}` / `{brand}` substituted. |
 | `content_feeds` | `List[str]` | Competitor/industry RSS + sitemap URLs for real-time ingestion. |
 | `serp_footprints` | `List[str]` | Concrete source URLs per AI-engine surface; may be `engine|label|url`. |
@@ -1115,18 +1143,20 @@ crawl_depth: 50
 locality: null
 
 # ----- engine settings (usually leave alone) -----
-harvester: "duckduckgo"            # duckduckgo | searxng | file
+harvester: "multi"                 # multi | searxng | file | duckduckgo (fallback-only) | answers
+answer_harvester: "multi"          # off | brave | tavily | exa | multi (keys via BRAVE/TAVILY/EXA env)
+answer_repeats: 5                  # 5-10x per prompt (probabilistic noise sampling)
 searxng_base_url: null
 corpus_dir: null
 include_reddit: true
 include_news: true
-embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+embedding_model: "nomic-ai/nomic-embed-text-v1.5"   # FULL default; LITE uses MiniLM-90MB
 spacy_model: "en_core_web_sm"
 output_dir: "./ragevda_output"
 require_real_models: true          # never emit fake/degraded numbers
 
 # ----- enterprise / advanced -----
-search_intent: "informational"     # informational|transactional|comparison|research|local|commercial|navigational
+search_intent: "informational"     # informational|transactional|comparison|research|local|qa
 chunk_tokens: 512
 chunk_overlap_tokens: 64
 target_entity_density: 0.015
@@ -1210,6 +1240,19 @@ full PDF, outputs hub).
 ---
 
 ## Changelog
+
+### v2.2.0 — Enterprise GEO-depth release
+- **Fixed:** paid fan-out now covers ALL queries (RRF-merged ThreadPool batch,
+  was `queries[0]` only) with concurrent fetching; scheduler tick race
+  (snapshot-under-lock, callback outside lock); defaults now GEO-real
+  (`harvester/answer_harvester: multi`, 6 standard intents, TikTok opt-in,
+  `generate_llms_txt: false`).
+- **Added:** 10 P0 engines in `advanced` (citation stealer, fan-out coverage,
+  E-E-A-T gate, entity-gain, reddit topics, media checks, multilingual,
+  white-label/MCP, prompt volumes + daily snapshots + drift alerts) plus
+  `docs/` (`EMBEDDINGS.md`, `SERVING.md`, `SCOPE_2026.md`) and CI
+  `version-check`. Suite: 59 passed, 9 skipped.
+- Full details in [`CHANGELOG.md`](CHANGELOG.md).
 
 ### v2.1.1 — Audit-always-completes release
 - **Fixed:** audit no longer stalls looking "stopped at X%" — named phase

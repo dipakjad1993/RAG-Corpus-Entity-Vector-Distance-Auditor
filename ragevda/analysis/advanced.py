@@ -150,6 +150,68 @@ def run_advanced(ctx, config, proximity_rows, citation_result,
     except Exception as exc:  # noqa: BLE001
         logger.warning("attribution skipped: %s", exc)
 
+    # 15. P0 GEO depth: passage citation stealer + fan-out coverage + E-E-A-T +
+    # entity-gain + reddit topics + media checks + multilingual. All fail-open.
+    try:
+        from .citation_reverse import reverse_citations
+        _answers = [d.text for d in (ctx.docs or [])
+                    if getattr(d, "source_type", "") == "answer" and (getattr(d, "text", "") or "").strip()]
+        from ..nlp import Embedder as _Emb
+        try:
+            result["citation_reverse"] = reverse_citations(_answers, ctx.docs, _Emb(ctx.embedding_model))
+        except Exception:
+            result["citation_reverse"] = {"steals": [], "method": "embedder unavailable"}
+    except Exception as exc:  # noqa: BLE001
+        result["citation_reverse"] = {"steals": [], "method": f"skipped: {exc}"}
+    try:
+        from .fanout_exec import fanout_coverage
+        from ..prompt_library import build_prompts as _bp
+        _prompts = [p.get("text", "") for p in (_bp(config) or []) if isinstance(p, dict) and p.get("text")] or \
+            list(config.industry_topics or [])
+        result["fanout_coverage"] = fanout_coverage(_prompts, ctx.docs, config)
+    except Exception as exc:  # noqa: BLE001
+        result["fanout_coverage"] = {"clusters": [], "method": f"skipped: {exc}"}
+    try:
+        from .eeat_gate import eeat_gate
+        result["eeat"] = eeat_gate(ctx.docs)
+    except Exception as exc:  # noqa: BLE001
+        result["eeat"] = {"rows": [], "method": f"skipped: {exc}"}
+    try:
+        from .entity_gain import score_corpus
+        _counts = {getattr(d, "doc_id", ""): len(getattr(d, "entities", []) or [])
+                   for d in (ctx.docs or [])} if hasattr(ctx.docs[0] if ctx.docs else {}, "entities") else {}
+        result["entity_gain"] = score_corpus(ctx.docs, _counts, getattr(config, "target_brand", ""))
+    except Exception as exc:  # noqa: BLE001
+        result["entity_gain"] = {"rows": [], "method": f"skipped: {exc}"}
+    try:
+        from .reddit_topics import reddit_topics
+        _aurls = [getattr(d, "url", "") for d in (ctx.docs or []) if getattr(d, "source_type", "") == "answer"]
+        result["reddit_topics"] = reddit_topics(ctx.docs, _aurls)
+    except Exception as exc:  # noqa: BLE001
+        result["reddit_topics"] = {"subreddits": [], "method": f"skipped: {exc}"}
+    try:
+        from .media_checks import media_checks
+        result["media"] = media_checks(ctx.docs, list(config.industry_topics or []))
+    except Exception as exc:  # noqa: BLE001
+        result["media"] = {"rows": [], "method": f"skipped: {exc}"}
+    try:
+        from ..nlp.multilingual import multilingual_report
+        result["multilingual"] = multilingual_report(ctx.docs, config)
+    except Exception as exc:  # noqa: BLE001
+        result["multilingual"] = {"lang_counts": {}, "method": f"skipped: {exc}"}
+    try:
+        from ..reporting.white_label import white_label_header, mcp_tools_status
+        result["white_label"] = white_label_header(config)
+        result["mcp_tools"] = mcp_tools_status(config, ctx.docs)
+    except Exception as exc:  # noqa: BLE001
+        result["white_label"] = {"method": f"skipped: {exc}"}
+    # 16. Synthetic queries are LEGACY (forward-tracked prompt library is
+    # default since 2026); keep for back-compat, label clearly.
+    if isinstance(result.get("synthetic_queries"), dict):
+        result["synthetic_queries"]["legacy"] = True
+        result["synthetic_queries"]["note"] = ("LEGACY: use advanced.fanout + "
+            "prompt library forward tracking; synthetic kept for back-compat only.")
+
     return result
 
 

@@ -82,16 +82,26 @@ LEGACY_ENGINE_MATRIX = [
 ]
 
 # Query-intent templates applied to each topic. Each intent captures a
-# different retrieval surface (informational / transactional / local / qa).
+# different retrieval surface (informational / transactional / comparison /
+# research / local / qa — the 2026 standard set). Legacy commercial /
+# navigational keys are still accepted via ``query_templates`` for
+# back-compat but are NOT default intents (navigational never triggers AIO
+# citations; commercial duplicates transactional).
 DEFAULT_QUERY_TEMPLATES = {
     "informational": "what is {topic}",
     "transactional": "best {topic} software tools",
     "comparison": "{topic} vs alternatives comparison",
     "research": "how to {topic} guide",
+    "local": "{topic} near me {brand}",
+    "qa": "{topic} frequently asked questions answered",
+}
+LEGACY_QUERY_TEMPLATES = {
     "commercial": "top {topic} solutions compared",
     "navigational": "{brand} {topic} official site",
-    "local": "{topic} near me {brand}",
 }
+STANDARD_INTENTS = ("informational", "transactional", "comparison",
+                    "research", "local", "qa")
+LEGACY_INTENTS = ("commercial", "navigational")
 
 # RAG contextual-window defaults (tokens). Most retrieval back-ends index
 # 256-512 token chunks; we simulate these windows before scoring so cosine
@@ -115,7 +125,7 @@ class RunConfig:
     # --- Harvesting --------------------------------------------------------
     crawl_depth: int = 50
     locality: Optional[str] = None
-    harvester: str = "duckduckgo"          # duckduckgo | searxng | file
+    harvester: str = "multi"          # multi | searxng | file | duckduckgo (fallback-only) | answers
     prefer_searxng: bool = False           # if True and searxng_base_url set, SearXNG is primary
     searxng_base_url: Optional[str] = None
     corpus_dir: Optional[str] = None       # used when harvester == "file"
@@ -212,7 +222,7 @@ class RunConfig:
     # Query real answer engines 5-10x per prompt, parse citations + answer
     # text. Providers: brave | tavily | exa (API keys via env). Without this
     # the tool is not a GEO tool — SERP scraping alone is insufficient.
-    answer_harvester: str = "off"        # off | brave | tavily | exa | multi
+    answer_harvester: str = "multi"        # off | brave | tavily | exa | multi
     answer_repeats: int = 5              # 5-10x per prompt (probabilistic noise)
     answer_engines: List[str] = field(default_factory=lambda: ["perplexity", "chatgpt", "gemini"])
     brave_api_key: Optional[str] = None
@@ -225,14 +235,16 @@ class RunConfig:
     personas: List[str] = field(default_factory=lambda: ["default"])
     prompt_volume: int = 5               # repeats per prompt frame x persona
 
-    # --- P0: UGC corpus (first-class) --------------------------------------
+    # --- P0: UGC corpus (Reddit + YouTube core; TikTok OPTIONAL plugin via
+    # paid SERP API only — scraper is fragile/auth-walled/TOS-risk) ---------
     ugc_reddit: bool = True
     ugc_youtube: bool = True
-    ugc_tiktok: bool = True
+    ugc_tiktok: bool = False
     youtube_api_key: Optional[str] = None
 
-    # --- P0: llms.txt + MCP -------------------------------------------------
-    generate_llms_txt: bool = True
+    # --- P0: llms.txt + MCP (HYGIENE P2 — coding agents only, zero AIO/ranking
+    # effect per Google May-2026 guide; kept lean, off by default) ------------
+    generate_llms_txt: bool = False
     site_base_url: Optional[str] = None
     mcp_tools: List[str] = field(default_factory=lambda: ["get_pricing", "check_stock"])
 
@@ -333,7 +345,7 @@ class RunConfig:
 
         # "Prefer SearXNG" toggle: make SearXNG the primary live harvester
         # whenever a URL is configured, falling back to DuckDuckGo otherwise.
-        if self.prefer_searxng and self.searxng_base_url and self.harvester == "duckduckgo":
+        if self.prefer_searxng and self.searxng_base_url and self.harvester == "multi":
             self.harvester = "searxng"
 
         if self.harvester == "searxng" and not self.searxng_base_url:
@@ -362,14 +374,13 @@ class RunConfig:
             raise ValueError("target_entity_density must be in [0, 1]")
         if self.top_k_retrieval < 1:
             raise ValueError("top_k_retrieval must be >= 1")
-        if self.search_intent not in ("informational", "transactional",
-                                       "comparison", "research", "local",
-                                       "commercial", "navigational") \
+        if self.search_intent not in STANDARD_INTENTS \
+                and self.search_intent not in LEGACY_INTENTS \
                 and self.search_intent not in self.query_templates:
             raise ValueError(
-                "search_intent must be a known intent (informational / "
-                "transactional / comparison / research / local / commercial / "
-                "navigational) or a key of query_templates")
+                "search_intent must be a standard intent (informational / "
+                "transactional / comparison / research / local / qa), a legacy "
+                "intent (commercial / navigational), or a key of query_templates")
 
         # --- P0/P1 enterprise field validation (junior-readable errors) ----
         if self.answer_harvester not in ("off", "brave", "tavily", "exa", "multi"):
@@ -517,6 +528,7 @@ class RunConfig:
         informational vs comparison retrieval surfaces per run.
         """
         merged = dict(DEFAULT_QUERY_TEMPLATES)
+        merged.update(LEGACY_QUERY_TEMPLATES)
         merged.update(self.query_templates or {})
         if intent in merged:
             return {intent: merged[intent]}
