@@ -39,6 +39,12 @@ from .utils import get_logger
 
 logger = get_logger("ragevda.orchestrator")
 
+# Phase markers consumed by the web progress bar (webapp._PROGRESS_RULES).
+# Every long phase logs start + end so the UI never looks stuck and the run
+# always proceeds to the next phase instead of stalling silently.
+def _phase(msg: str) -> None:
+    logger.info("%s", msg)
+
 
 def _probe_searxng(config) -> Optional[str]:
     """Return the resolved SearXNG base URL if it is reachable, else None.
@@ -237,6 +243,8 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
     harvest_stats: Dict[str, int] = {}
     if docs is None:
         queries = config.search_queries()
+        _phase(f"harvest plan: {len(queries)} queries x depth {config.crawl_depth} "
+               f"(max_pages={config.max_pages}, max_queries={config.max_search_queries})")
         docs, harvest_stats, fallback_note = _harvest_or_fallback(
             config, queries, config.crawl_depth
         )
@@ -269,6 +277,8 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
     # search harvester, so the corpus always reflects these explicit inputs.
     if docs is None:
         docs = []
+    _phase("augmenting corpus: feeds + UGC (reddit/youtube/tiktok) + answer harvester")
+    import time as _t
     try:
         from .harvester.feeds import FeedHarvester
         augmenter = FeedHarvester(config)
@@ -278,11 +288,26 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
             augmenter.close()
         # P0: first-class UGC (Reddit / YouTube / TikTok) — earned media is
         # 80-90% of AI answers; skipping it makes invisibility lie.
+        # Time-boxed: UGC hits slow third parties (reddit/youtube/tiktok) that
+        # can each stall for a full HTTP timeout. The whole UGC block gets a
+        # bounded budget (default 90s, RAGEVDA_UGC_TIMEOUT) and a reduced query
+        # set so a slow network can never freeze the audit mid-run.
         try:
+            import os as _os
+            _ugc_budget = float(_os.environ.get("RAGEVDA_UGC_TIMEOUT", "90") or 90)
+            _ugc_t0 = _t.perf_counter()
             from .harvester.ugc import harvest_reddit, harvest_youtube, harvest_tiktok
-            ugc_q = config.search_queries()[:20]
-            ugc = (harvest_reddit(ugc_q, config) + harvest_youtube(ugc_q, config)
-                   + harvest_tiktok(ugc_q, config))
+            ugc_q = config.search_queries()[:5]
+            _phase(f"UGC harvest: {len(ugc_q)} seed queries (budget {_ugc_budget:.0f}s)")
+            ugc = harvest_reddit(ugc_q, config)
+            if _t.perf_counter() - _ugc_t0 < _ugc_budget:
+                ugc = ugc + harvest_youtube(ugc_q, config)
+            else:
+                logger.warning("UGC budget exhausted after reddit; skipping youtube/tiktok")
+            if _t.perf_counter() - _ugc_t0 < _ugc_budget:
+                ugc = ugc + harvest_tiktok(ugc_q, config)
+            else:
+                logger.warning("UGC budget exhausted; skipping tiktok")
             if ugc:
                 extra = (extra or []) + ugc
                 harvest_stats["ugc_docs"] = len(ugc)
@@ -318,11 +343,13 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
     except Exception as exc:  # noqa: BLE001
         logger.warning("direct-input augmentation skipped: %s", exc)
     # ---- 1b. De-duplicate harvested corpus -------------------------
+    _phase(f"dedupe corpus: {len(docs)} harvested doc(s)")
     docs, dedup_removed = _dedupe(docs, config)
     if dedup_removed:
         logger.info("removed %d duplicate document(s) from corpus", dedup_removed)
         harvest_stats["dedup_removed"] = dedup_removed
     logger.info("corpus size: %d documents", len(docs))
+    _phase(f"corpus built: {len(docs)} documents (dedup removed {dedup_removed})")
     if not docs:
         harvest_warning = (
             "No documents could be harvested from live search. The analysis "
@@ -338,13 +365,20 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
     embedder = Embedder(config.embedding_model, require_real=config.require_real_models)
     ner = NER(config.spacy_model, require_real=config.require_real_models)
     cooccur = CoOccurrenceGraph()
+    _phase("building analysis context: chunk + embed + NER graph")
     ctx = build_context(config, docs, embedder, ner, cooccur)
 
     # ---- 3. Analysis ------------------------------------------------
+    _phase("proximity analysis: brand vs competitor vector distance")
     prox = analyze_proximity(ctx)
+    _phase("citation-gap analysis: linked vs unlinked vs omitted")
     cit = analyze_citation_gap(ctx)
+    _phase("invisibility analysis: per-topic RAG invisibility index")
     inv = analyze_invisibility(ctx, cit)
+    _phase("generating recommendations: prioritized action list")
     recs = generate_recommendations(ctx, prox, cit, inv)
+    _phase("advanced engines: chunking, density, sentiment, poisoning, "
+           "engine-matrix, queries, drift, LLM, visibility, fanout")
     advanced = run_advanced(
         ctx, config, prox["rows"], cit, inv,
         job_id=ctx_job_id,
@@ -369,6 +403,7 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
 
     # Data provenance: every harvested source behind the metrics, with the
     # real-fetch evidence (final URL, HTTP status, content hash, latency).
+    _phase("freshness validation: liveness + age signals per source")
     from .analysis.freshness import validate_freshness
     freshness = validate_freshness(ctx.docs)
     freshness_by_id = {f["doc_id"]: f for f in freshness.get("per_source", [])}
@@ -509,9 +544,12 @@ def run(config: RunConfig, docs: Optional[List] = None) -> Dict:
     }
 
     # ---- write outputs ---------------------------------------------
+    _phase("persisting corpus to DuckDB + writing JSON report")
     json_path = os.path.join(out_dir, "report.json")
     write_json(json_path, report)
+    _phase("generating CSV reports")
     csv_paths = write_csvs(out_dir, report)
+    _phase("wrote HTML dashboard")
     html_path = os.path.join(out_dir, "dashboard.html")
     write_dashboard(html_path, report)
     write_rag_brief(os.path.join(out_dir, "rag_content_brief.md"), report)

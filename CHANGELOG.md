@@ -2,6 +2,26 @@
 
 All notable changes to RAG-EVDA. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.1.1] — 2026-09-15 — Audit-always-completes release
+
+### Fixed
+- Audit no longer looks "stuck at X%": every pipeline phase now emits a named
+  log marker (harvest plan → UGC → dedupe → corpus built → context → proximity
+  → citation-gap → invisibility → recommendations → advanced → freshness →
+  persist → CSV → dashboard), and the web progress bar maps each marker to a
+  monotonic 6→98% stage.
+- 45s heartbeat watchdog in the web worker: silent CPU/network phases
+  (large embedding batches, one-time sentiment-model download, rate-limited
+  harvest) log `still working: <stage> (<elapsed>s)` so the console and bar
+  visibly prove liveness.
+- Harvest time-box: `RAGEVDA_HARVEST_TIMEOUT` (default 480s) stops issuing new
+  DDG queries on deadline and continues with collected candidates; fetch phase
+  honors 2× deadline and keeps partial results. Per-empty-query fallbacks cut
+  from 3 variants to 1 (each is a full network round-trip).
+- UGC time-box: `RAGEVDA_UGC_TIMEOUT` (default 90s) with 5 seed queries per
+  source (was 20/15/10); reddit → youtube → tiktok degrade gracefully on
+  budget exhaustion instead of freezing the audit.
+
 ## [Unreleased]
 ### Added
 - v2.1.0 LITE profile: `Dockerfile.render` + `requirements.render.txt` +

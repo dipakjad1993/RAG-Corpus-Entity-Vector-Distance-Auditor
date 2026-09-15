@@ -101,9 +101,27 @@ WEB_STYLE = _WEB_STYLE
 _PROGRESS_RULES = [
     ("wrote HTML dashboard", 98, "Generating HTML dashboard"),
     ("wrote CSV", 96, "Generating CSV reports"),
+    ("generating CSV reports", 95, "Generating CSV reports"),
     ("wrote JSON report", 94, "Generating JSON report"),
+    ("persisting corpus", 93, "Persisting results"),
+    ("freshness validation", 93, "Validating source freshness"),
     ("audit complete", 99, "Finalizing results"),
     ("context built", 85, "Building graphs & metrics"),
+    ("advanced engines", 89, "Running advanced engines"),
+    ("generating recommendations", 88, "Generating recommendations"),
+    ("invisibility analysis", 87, "Scoring invisibility"),
+    ("citation-gap analysis", 86, "Scoring citation gaps"),
+    ("proximity analysis", 86, "Scoring vector proximity"),
+    ("building analysis context", 75, "Analyzing semantics"),
+    ("corpus built", 74, "Corpus built"),
+    ("corpus size", 74, "Corpus built"),
+    ("dedupe corpus", 73, "De-duplicating corpus"),
+    ("augmenting corpus", 40, "Augmenting corpus (feeds/UGC)"),
+    ("ugc harvest", 44, "Harvesting UGC (reddit/youtube/tiktok)"),
+    ("ugc budget exhausted", 50, "UGC time-box reached — continuing"),
+    ("answer harvest", 52, "Harvesting live answers"),
+    ("harvest plan", 8, "Planning search queries"),
+    ("downloading sentiment model", 91, "Downloading sentiment model (one-time)"),
     ("sentiment scored", 92, "Auditing brand sentiment"),
     ("scoring sentiment", 90, "Auditing brand sentiment"),
     ("entity centroid", 84, "Building entity centroids"),
@@ -111,12 +129,13 @@ _PROGRESS_RULES = [
     ("chunked", 76, "Chunking documents"),
     ("embedded", None, "Embedding documents"),  # special-cased below
     ("embedding", 80, "Embedding documents"),
-    ("building analysis context", 75, "Analyzing semantics"),
     ("harvested", 72, "Corpus built"),
+    ("capped candidates", 38, "Preparing fetch list"),
+    ("harvest deadline", 71, "Harvest time-box reached — continuing"),
     ("fetched", None, "Fetching pages"),          # special-cased below
     ("fetching", 42, "Fetching pages"),
-    ("capped candidates", 38, "Preparing fetch list"),
     ("raw results", None, "Harvesting search results"),  # special-cased below
+    ("still working", None, "Still working"),     # special-cased below (heartbeat)
     ("starting audit", 6, "Initializing pipeline"),
 ]
 
@@ -131,6 +150,14 @@ def _progress_from_msg(job: Dict, msg: str) -> None:
     stage = job.get("stage", "")
     for keyword, value, label in _PROGRESS_RULES:
         if keyword.lower() in low:
+            if keyword == "still working":
+                # Heartbeat from the worker watchdog: prove liveness without
+                # jumping stages. Nudge at most +1, capped below "done".
+                job["progress"] = min(99, int(job.get("progress", 0)) + 1)
+                m = re.search(r"still working:\s*(.+?)\s*\(\d+s", msg, re.I)
+                if m:
+                    job["stage"] = f"Still working: {m.group(1).strip()[:80]}"
+                return
             if keyword == "fetched":
                 m = re.search(r"fetched (\d+)/(\d+)", msg)
                 if m:
@@ -1549,6 +1576,26 @@ def _worker(job_id: str, cfg) -> None:
             logging.getLogger(name).propagate = True
     rag_logger.addHandler(handler)
     rag_logger.setLevel(logging.INFO)
+    import time as _time
+    _stop_hb = threading.Event()
+
+    def _heartbeat() -> None:
+        # Watchdog: if a CPU/network phase goes silent (large embedding batch,
+        # sentiment model download, rate-limited harvest), emit a heartbeat log
+        # every 45s so the progress bar / console visibly prove the job is
+        # alive instead of looking "stopped at X%".
+        _t0 = _time.time()
+        while not _stop_hb.wait(45):
+            with JOBS_LOCK:
+                jj = JOBS.get(job_id)
+                if not jj or jj.get("status") in ("done", "error"):
+                    return
+                stage = jj.get("stage", "working")
+                elapsed = int(_time.time() - _t0)
+            rag_logger.info("still working: %s (%ss elapsed)", stage, elapsed)
+
+    _hb = threading.Thread(target=_heartbeat, daemon=True)
+    _hb.start()
     try:
         from .orchestrator import run
 
@@ -1573,6 +1620,7 @@ def _worker(job_id: str, cfg) -> None:
             j["error"] = str(exc)
             j["status"] = "error"
     finally:
+        _stop_hb.set()
         rag_logger.removeHandler(handler)
 
 

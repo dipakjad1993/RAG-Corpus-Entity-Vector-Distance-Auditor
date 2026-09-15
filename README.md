@@ -4,7 +4,7 @@
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 ![Local-only](https://img.shields.io/badge/LLM-100%25%20local-orange)
-![Version](https://img.shields.io/badge/version-2.1.0-black)
+![Version](https://img.shields.io/badge/version-2.1.1-black)
 [![Live demo](https://img.shields.io/badge/demo-live%20on%20Render-brightgreen)](https://rag-corpus-entity-vector-distance-auditor.onrender.com/)
 
 > **Try it live:** https://rag-corpus-entity-vector-distance-auditor.onrender.com/
@@ -25,6 +25,27 @@ competitors — with **zero OpenAI / Ahrefs / Semrush / BrightEdge API keys** an
 | | | |
 |---|---|---|
 |  **125 docs** audited in the reference Guardian run |  **$0** API cost, forever |  **Full output bundle** per run (JSON + HTML + DuckDBs + brief + action plan + WebMCP + Looker) |
+
+### What's new in v2.1.1 — Audit-always-completes release
+
+- **No more "stuck at X%"** — every pipeline phase now logs a named marker
+  (harvest plan → UGC → dedupe → corpus built → context → proximity →
+  citation-gap → invisibility → recommendations → advanced → freshness →
+  persist → CSV → dashboard) and the web progress bar maps each one to a
+  monotonic 6→98% stage, so the full 10-engine run is always visible.
+- **45s heartbeat watchdog** — silent CPU/network stretches (large embedding
+  batches, the one-time ~600MB sentiment-model download, rate-limited
+  harvests) emit `still working: <stage> (<elapsed>s)` so the console and bar
+  prove liveness instead of freezing.
+- **Harvest time-box** — `RAGEVDA_HARVEST_TIMEOUT` (default 480s): the DDG
+  harvester stops issuing new queries on deadline and continues with the
+  candidates already collected; the fetch phase honors 2× deadline and keeps
+  partial results. Empty-query fallbacks cut from 3 variants to 1.
+- **UGC time-box** — `RAGEVDA_UGC_TIMEOUT` (default 90s), 5 seed queries per
+  source (reddit/youtube/tiktok degrade gracefully on budget exhaustion).
+- **Faster by default on slow networks** — fewer dead-end round-trips, earlier
+  progress signal (`harvest plan: N queries x depth D` at 8%), per-10-page
+  fetch heartbeats, and actionable deadline warnings in the log.
 
 ### What's new in v2.1.0 — LITE + Visibility + Closed-loop release
 
@@ -201,21 +222,22 @@ guidelines, and the project's About + tags.**
 ## Table of Contents
 
 1. [Why it exists](#why-it-exists)
-2. [ What's new in v2.1.0](#-whats-new-in-v210--lite--visibility--closed-loop-release)
-2. [ What's new in v2.0.0](#-whats-new-in-v200--enterprise-geo-release)
-2. [ What's new in v1.3.0](#-whats-new-in-v130--enterprise-experience-release)
-3. [What problem it solves](#what-problem-it-solves)
-3. [Architecture — four local micro-engines](#architecture--four-local-micro-engines)
-4. [Feature summary table](#feature-summary-table)
-5. [Installation](#installation)
-6. [Quick start](#quick-start)
-   - [CLI](#cli)
-   - [Web UI](#web-ui)
-   - [Python API](#python-api)
-7. [Inputs — every field explained](#inputs--every-field-explained)
-   - [Core inputs](#core-inputs)
-   - [Enterprise / advanced inputs](#enterprise--advanced-inputs)
-8. [Core features & functions — deep dive](#core-features--functions--deep-dive)
+2. [What's new in v2.1.1](#whats-new-in-v211--audit-always-completes-release)
+3. [What's new in v2.1.0](#whats-new-in-v210--lite--visibility--closed-loop-release)
+4. [What's new in v2.0.0](#whats-new-in-v200--enterprise-geo-release)
+5. [What's new in v1.3.0](#whats-new-in-v130--enterprise-experience-release)
+6. [What problem it solves](#what-problem-it-solves)
+7. [Architecture — four local micro-engines](#architecture--four-local-micro-engines)
+8. [Feature summary table](#feature-summary-table)
+9. [Installation](#installation)
+10. [Quick start](#quick-start)
+    - [CLI](#cli)
+    - [Web UI](#web-ui)
+    - [Python API](#python-api)
+11. [Inputs — every field explained](#inputs--every-field-explained)
+    - [Core inputs](#core-inputs)
+    - [Enterprise / advanced inputs](#enterprise--advanced-inputs)
+12. [Core features & functions — deep dive](#core-features--functions--deep-dive)
    - [Feature A — Zero-cost headless web harvester](#feature-a--zero-cost-headless-web-harvester)
    - [Feature B — Local embeddings & semantic mapping](#feature-b--local-embeddings--semantic-mapping)
    - [Feature C — Local NER & knowledge graph](#feature-c--local-ner--knowledge-graph)
@@ -231,23 +253,23 @@ guidelines, and the project's About + tags.**
    - [Enterprise module 9 — RAG content brief & JSON-LD patch](#enterprise-module-9--rag-content-brief--json-ld-patch)
    - [Enterprise module 10 — Local-LLM (Ollama) gap analysis](#enterprise-module-10--local-llm-ollama-gap-analysis)
    - [Enterprise module 11 — Concurrency, dedup, and resilience](#enterprise-module-11--concurrency-dedup-and-resilience)
-9. [Key metrics — the vocabulary of the report](#key-metrics--the-vocabulary-of-the-report)
-10. [Outputs — every file explained](#outputs--every-file-explained)
-11. [Schema — the report.json contract](#schema--the-reportjson-contract)
-12. [Real worked example — a live The Guardian audit](#real-worked-example--a-live-the-guardian-audit)
-12. [Live screenshots — real output from the The Guardian audit](#live-screenshots--real-output-from-the-the-guardian-audit)
-13. [DuckDB — the local vector database](#duckdb--the-local-vector-database)
-14. [Recurring / scheduled audits & drift history](#recurring--scheduled-audits--drift-history)
-15. [Configuration reference — full YAML](#configuration-reference--full-yaml)
-16. [Extending toward the polyglot architecture](#extending-toward-the-polyglot-architecture)
-17. [Troubleshooting](#troubleshooting)
-18. [Responsible use](#responsible-use)
-19. [About](#about)
-20. [Changelog](#changelog)
-21. [Tags](#tags)
-22. [Roadmap](#roadmap)
-23. [Author](#author)
-24. [License](#license)
+13. [Key metrics — the vocabulary of the report](#key-metrics--the-vocabulary-of-the-report)
+14. [Outputs — every file explained](#outputs--every-file-explained)
+15. [Schema — the report.json contract](#schema--the-reportjson-contract)
+16. [Real worked example — a live The Guardian audit](#real-worked-example--a-live-the-guardian-audit)
+17. [Live screenshots — real output from the The Guardian audit](#live-screenshots--real-output-from-the-the-guardian-audit)
+18. [DuckDB — the local vector database](#duckdb--the-local-vector-database)
+19. [Recurring / scheduled audits & drift history](#recurring--scheduled-audits--drift-history)
+20. [Configuration reference — full YAML](#configuration-reference--full-yaml)
+21. [Extending toward the polyglot architecture](#extending-toward-the-polyglot-architecture)
+22. [Troubleshooting](#troubleshooting)
+23. [Responsible use](#responsible-use)
+24. [About](#about)
+25. [Changelog](#changelog)
+26. [Tags](#tags)
+27. [Roadmap](#roadmap)
+28. [Author](#author)
+29. [License](#license)
 
 ---
 
@@ -393,7 +415,7 @@ python -c "from sentence_transformers import SentenceTransformer; SentenceTransf
 python -c "from transformers import AutoTokenizer, AutoModelForSequenceClassification; AutoTokenizer.from_pretrained('tabularisai/multilingual-sentiment-analysis'); AutoModelForSequenceClassification.from_pretrained('tabularisai/multilingual-sentiment-analysis')"
 
 # 5. verify
-python -m ragevda.cli --version   # → ragevda 2.1.0
+python -m ragevda.cli --version   # → ragevda 2.1.1
 
 # 6. run the quality gates (unit + enterprise GEO gates)
 python -m pytest tests/ --geo -q  # → 48 passed
@@ -486,7 +508,7 @@ guard (no private/loopback hosts, validated redirect chain, optional
 
 ```bash
 uvicorn ragevda.api:app --host 127.0.0.1 --port 9000
-# GET  /health               → {"ok": true, "version": "2.1.0"}
+# GET  /health               → {"ok": true, "version": "2.1.1"}
 # POST /jobs                 → {"job_id": ...}  (X-API-Key header)
 # GET  /jobs/{id}            → status/progress/logs
 # GET  /jobs/{id}/report     → full report.json
@@ -855,7 +877,7 @@ Every audit writes a self-contained folder (e.g. `ragevda_output/` or
 ```jsonc
 {
   "meta": {
-    "tool": "RAG-EVDA", "version": "2.1.0", "generated_at": "...Z",
+    "tool": "RAG-EVDA", "version": "2.1.1", "generated_at": "...Z",
     "config": { /* every RunConfig field */ },
     "embedding_kind": "sentence-transformers",
     "embedding_model": "BAAI/bge-small-en-v1.5",
@@ -1148,8 +1170,8 @@ self-contained, so it can be embedded or served by any static host.
 | `verification_score` low / `verified: false` | Low support fraction or partial provenance of the harvested corpus | Not a tool failure — it means the run's confidence is honestly low. Improve corpus quality/coverage. |
 | Browser still shows the old UI after updating | The Flask server (`python -m ragevda.cli web`) loads code once at startup — it does not hot-reload | Restart the server process, then hard-refresh (`Ctrl+Shift+R`). The running PID is shown by the OS process list; kill it and re-run the same command. |
 | Downloaded PDF looks like the old layout | A `report.pdf` cached from a previous version was served | Fixed in v1.3.0: the server auto-rebuilds any PDF older than the generator on next download. On older checkouts, delete the job's `report.pdf` and re-download. |
-| Audit "stuck" at one % for many minutes | Slow hosts (20s timeout × 2 retries each) + silent CPU phases (mention scan, centroid encoding, transformer sentiment over hundreds of windows) | Working-as-designed: the bar now emits heartbeat stages (`Chunking documents → Scanning entity mentions → Building entity centroids → Auditing brand sentiment`). A 200-page FULL audit takes ~15–45 min on laptop CPU. For a 3–5 min triage: `crawl_depth: 20`, `max_pages: 40`, `RAGEVDA_LITE=1`. Tune fetch via `RAGEVDA_FETCH_TIMEOUT` (default 20s) / `RAGEVDA_MAX_CONCURRENCY` (default 8). |
-| Audit takes very long overall | 200 pages × retries + CPU embeddings + transformer sentiment | Reduce scope (`max_pages`, `crawl_depth`, `max_search_queries` — `0` = unlimited but only on a big box), use LITE (lexicon sentiment skips the ~600MB transformer), or add Brave/Tavily/Exa keys so fewer dead-end fetches are needed. |
+| Audit "stuck" at one % for many minutes | Slow hosts / rate-limited search + a silent CPU stretch (mention scan, centroid encoding, transformer sentiment over hundreds of windows) | v2.1.1+: the run always advances — named phase markers move the bar 6→98%, a 45s `still working` heartbeat proves liveness in the console, harvest honors `RAGEVDA_HARVEST_TIMEOUT` (default 480s) and UGC honors `RAGEVDA_UGC_TIMEOUT` (default 90s) instead of stalling forever. If the log shows `harvest deadline` / `UGC budget exhausted`, the audit correctly continued with partial results — narrow scope for a faster run (below). |
+| Audit takes very long overall | 200 pages × retries + CPU embeddings + transformer sentiment | Reduce scope (`max_pages: 40–80`, `crawl_depth: 10–20`, `max_search_queries: 30–50` — `0` = unlimited, big box only), use `RAGEVDA_LITE=1` (lexicon sentiment skips the ~600MB one-time transformer download), tune fetch via `RAGEVDA_FETCH_TIMEOUT` (default 20s) / `RAGEVDA_MAX_CONCURRENCY` (default 8) / `RAGEVDA_HARVEST_TIMEOUT` (default 480s) / `RAGEVDA_UGC_TIMEOUT` (default 90s), or add Brave/Tavily/Exa keys so fewer dead-end fetches are needed. A 200-page FULL audit takes ~15–45 min on laptop CPU; a triage config above takes ~3–5 min. |
 
 ---
 
@@ -1173,7 +1195,7 @@ self-contained, so it can be embedded or served by any static host.
 
 ## About
 
-**RAG-EVDA — RAG Corpus Entity & Vector Distance Auditor (v1.3.0)** is a zero-cost,
+**RAG-EVDA — RAG Corpus Entity & Vector Distance Auditor (v2.1.1)** is a zero-cost,
 fully-local intelligence engine for AI-search visibility. It decodes how modern
 generative search engines (Gemini, SearchGPT, Google AI Overviews, Perplexity,
 Bing Copilot) semantically perceive your brand relative to competitors inside a
@@ -1188,6 +1210,14 @@ full PDF, outputs hub).
 ---
 
 ## Changelog
+
+### v2.1.1 — Audit-always-completes release
+- **Fixed:** audit no longer stalls looking "stopped at X%" — named phase
+  markers across all 10 engines, monotonic 6→98% progress mapping, 45s
+  heartbeat watchdog, `RAGEVDA_HARVEST_TIMEOUT` (480s) + `RAGEVDA_UGC_TIMEOUT`
+  (90s) time-boxes, UGC capped to 5 seed queries/source, single DDG fallback
+  variant.
+- Full details in [`CHANGELOG.md`](CHANGELOG.md).
 
 ### v1.3.0 — Enterprise experience release
 - **Added:** enterprise 2026 web UI (hero, bento inputs, 3-step flow, Show

@@ -178,22 +178,41 @@ class DuckDuckGoHarvester:
         return results or []
 
     def harvest(self, queries: List[str], depth: Optional[int] = None) -> List[Document]:
+        import os as _os
         depth = depth or self.config.crawl_depth
         seen_urls: set = set()
         fetched: List[Document] = []
         # Hard cap prevents a run from exploding, but it is user-configurable
         # via ``max_pages`` (0 = unlimited).
         max_pages = self.config.max_pages or 0
+        # Overall harvest deadline (default 8 min, RAGEVDA_HARVEST_TIMEOUT):
+        # DDG rate-limits / slow hosts can otherwise stall the audit for tens
+        # of minutes with no progress. On deadline we stop issuing new queries
+        # and continue with whatever candidates we already have, so the audit
+        # ALWAYS completes instead of looking "stuck at 35%".
+        try:
+            deadline_s = float(_os.environ.get("RAGEVDA_HARVEST_TIMEOUT", "480") or 480)
+        except (TypeError, ValueError):
+            deadline_s = 480.0
+        _t0 = time.perf_counter()
 
         # Phase 1: collect candidate URLs per query, with per-query fallback so
         # a 0-result expanded query (e.g. "... news") still yields pages.
         candidates: List[Dict] = []
         empty_queries = 0
-        for q in queries:
+        for qi, q in enumerate(queries, 1):
+            if deadline_s and (time.perf_counter() - _t0) > deadline_s:
+                logger.warning("harvest deadline (%.0fs) reached after %d/%d queries; "
+                               "proceeding with %d candidates",
+                               deadline_s, qi - 1, len(queries), len(candidates))
+                break
             self.stats["queries"] += 1
             res = self._search(q, depth)
             if not res:
-                for alt in _fallback_queries(q):
+                # One fallback variant only (not 3): each alt is another full
+                # network round-trip, and 3x fallbacks per empty query is what
+                # made large audits take 3x longer on rate-limited networks.
+                for alt in _fallback_queries(q)[:1]:
                     res = self._search(alt, depth)
                     if res:
                         logger.info("query %r -> 0; fallback %r -> %d",
@@ -246,7 +265,7 @@ class DuckDuckGoHarvester:
 
         logger.info("fetching %d unique candidate URLs", len(candidates))
 
-        # Phase 2: fetch + clean concurrently.
+        # Phase 2: fetch + clean concurrently (bounded by same deadline).
         with cf.ThreadPoolExecutor(max_workers=self.config.max_concurrency) as ex:
             futures = {
                 ex.submit(
@@ -257,11 +276,22 @@ class DuckDuckGoHarvester:
             }
             done = 0
             for fut in cf.as_completed(futures):
-                doc = fut.result()
+                if deadline_s and (time.perf_counter() - _t0) > deadline_s * 2:
+                    logger.warning("fetch deadline reached at %d/%d pages; "
+                                   "continuing with %d clean docs",
+                                   done, len(candidates), len(fetched))
+                    for f in futures:
+                        f.cancel()
+                    break
+                try:
+                    doc = fut.result()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("fetch task failed: %s", exc)
+                    doc = None
                 if doc is not None:
                     fetched.append(doc)
                 done += 1
-                if done % 10 == 0:
+                if done % 10 == 0 or done == len(candidates):
                     logger.info("fetched %d/%d pages", done, len(candidates))
 
         logger.info("harvested %d clean documents", len(fetched))

@@ -27,10 +27,12 @@ def harvest_reddit(queries: List[str], config, per_query: int = 5) -> List[Docum
     """Reddit via old.reddit search JSON (no key needed)."""
     if not getattr(config, "ugc_reddit", True):
         return []
+    queries = list(queries or [])[:5]
+    logger.info("UGC harvest: reddit %d queries", len(queries))
     docs: List[Document] = []
     c = _client(config)
     try:
-        for q in queries[:20]:
+        for q in queries:
             url = f"https://www.reddit.com/search.json?q={q}&sort=relevance&limit={per_query}"
             if not robots_allowed(url, config.user_agent):
                 continue
@@ -58,6 +60,7 @@ def harvest_reddit(queries: List[str], config, per_query: int = 5) -> List[Docum
                 logger.debug("reddit query %r failed: %s", q, exc)
     finally:
         c.close()
+    logger.info("UGC harvest: reddit done (%d docs)", len(docs))
     return docs
 
 
@@ -65,11 +68,13 @@ def harvest_youtube(queries: List[str], config, per_query: int = 3) -> List[Docu
     """YouTube: search RSS feed + caption transcript when reachable (no key path)."""
     if not getattr(config, "ugc_youtube", True):
         return []
+    queries = list(queries or [])[:5]
+    logger.info("UGC harvest: youtube %d queries", len(queries))
     docs: List[Document] = []
     c = _client(config)
     try:
         import urllib.parse as _up
-        for q in queries[:15]:
+        for q in queries:
             try:
                 # YouTube search via public RSS-less oembed is limited; use the
                 # invidious-free approach: fetch search page titles is fragile,
@@ -102,6 +107,7 @@ def harvest_youtube(queries: List[str], config, per_query: int = 3) -> List[Docu
                 logger.debug("youtube query %r failed: %s", q, exc)
     finally:
         c.close()
+    logger.info("UGC harvest: youtube done (%d docs)", len(docs))
     return docs
 
 
@@ -131,12 +137,14 @@ def harvest_tiktok(queries: List[str], config, per_query: int = 3) -> List[Docum
     """TikTok SERP entries (search page JSON blobs). Fail-open, best-effort."""
     if not getattr(config, "ugc_tiktok", True):
         return []
+    queries = list(queries or [])[:5]
+    logger.info("UGC harvest: tiktok %d queries", len(queries))
     docs: List[Document] = []
     c = _client(config)
     try:
         import urllib.parse as _up
         import re
-        for q in queries[:10]:
+        for q in queries:
             try:
                 url = ("https://www.tiktok.com/search?q=" + _up.quote_plus(q))
                 if not robots_allowed(url, config.user_agent):
@@ -155,4 +163,5 @@ def harvest_tiktok(queries: List[str], config, per_query: int = 3) -> List[Docum
                 logger.debug("tiktok query %r failed: %s", q, exc)
     finally:
         c.close()
+    logger.info("UGC harvest: tiktok done (%d docs)", len(docs))
     return docs
