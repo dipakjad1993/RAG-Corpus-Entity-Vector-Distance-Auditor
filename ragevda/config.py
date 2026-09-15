@@ -429,6 +429,10 @@ class RunConfig:
         # Reject suspiciously generic names that come from placeholder
         # configs rather than real brand analysis. Generic demo names produce
         # generic demo-grade output, so they are blocked (not merely warned).
+        # NOTE: legal company suffixes (Ltd/Inc/LLC/...) are legitimate inside
+        # a full name ("Foo Ltd" passes). A suffix ALONE as an entry almost
+        # always means a comma split a company name ("Foo, Ltd" -> ["Foo",
+        # "Ltd"]) — that gets a specific, actionable error naming the field.
         _GENERIC_NAMES = {
             "acme", "widget", "corp", "company", "enterprise", "software",
             "product", "brand", "business", "inc", "llc", "ltd", "group",
@@ -438,11 +442,28 @@ class RunConfig:
             "your primary industry topic", "your secondary topic",
             "your tertiary topic",
         }
-        all_names = [brand.lower()] + [c.lower() for c in self.competitor_entities]
-        for name in all_names:
+        # Standalone legal suffixes: never a complete company name — flag with
+        # a comma-split hint instead of the generic placeholder message.
+        _BARE_SUFFIXES = {
+            "ltd", "inc", "llc", "corp", "corp.", "ltd.", "inc.", "llc.",
+            "gmbh", "pty", "plc", "co", "ltda", "sarl", "pvt", "pvt.",
+        }
+        labelled = [("brand", brand)] + [
+            (f"competitor #{i + 1}", c)
+            for i, c in enumerate(self.competitor_entities)
+        ]
+        for field, raw in labelled:
+            name = raw.strip().lower().rstrip(".")
+            if name in _BARE_SUFFIXES:
+                raise ValueError(
+                    f"{field} is just {raw.strip()!r} — that's a company suffix, "
+                    f"not a complete name. This usually means a comma split a "
+                    f"company name (e.g. 'Foo, Ltd'). Enter the full name "
+                    f"without the comma (e.g. 'Foo Ltd')."
+                )
             if name in _GENERIC_NAMES or name.startswith("your ") or name.startswith("competitor"):
                 raise ValueError(
-                    f"Name {name!r} looks like a placeholder/generic demo value. "
+                    f"{field} {raw.strip()!r} looks like a placeholder/generic demo value. "
                     "Use your REAL brand/company/topic names — generic placeholders "
                     "produce useless generic output and are blocked."
                 )

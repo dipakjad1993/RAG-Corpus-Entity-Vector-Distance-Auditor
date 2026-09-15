@@ -61,3 +61,22 @@ def test_crawl_depth_capped_not_silent():
     logging.getLogger("ragevda.config").addHandler(H())
     cfg = _base(crawl_depth=500)
     assert cfg.crawl_depth == 200
+
+
+def test_full_ltd_name_passes():
+    cfg = _base(target_brand="Foo Ltd", competitor_entities=["Bar Inc", "Baz LLC"])
+    assert cfg.target_brand == "Foo Ltd"
+
+
+def test_bare_suffix_names_field_error():
+    with pytest.raises(ValueError, match="competitor #2.*comma"):
+        _base(competitor_entities=["RealCorp", "Ltd"])
+    with pytest.raises(ValueError, match="brand.*suffix"):
+        _base(target_brand="Inc")
+
+
+def test_demo_placeholders_still_blocked_with_field():
+    with pytest.raises(ValueError, match="brand.*placeholder"):
+        _base(target_brand="Acme")
+    with pytest.raises(ValueError, match="competitor #1"):
+        _base(competitor_entities=["CompetitorA"])
