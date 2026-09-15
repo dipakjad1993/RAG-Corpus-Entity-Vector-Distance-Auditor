@@ -21,12 +21,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends libxml2 libxslt
 
 COPY requirements.render.txt pyproject.toml README.md ./
 COPY ragevda/ ./ragevda/
+# NOTE: `-e .` is installed with --no-deps on purpose: pyproject.toml pulls
+# the FULL stack (CUDA torch ~2.5GB, transformers, pandas, reportlab,
+# fastapi) which defeats LITE. requirements.render.txt lists only the light
+# runtime set; torch is CPU-only from the line below. The package itself is
+# importable from /app (WORKDIR) with zero heavy imports at boot.
 RUN pip install --upgrade pip \
  && pip install --index-url https://download.pytorch.org/whl/cpu torch==2.3.0+cpu \
+ && pip install --no-deps -e . \
  && pip install -r requirements.render.txt \
  && pip install gunicorn \
- && python -m spacy download en_core_web_sm \
- && python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')" \
+ && HF_HUB_OFFLINE=0 python -m spacy download en_core_web_sm \
+ && HF_HUB_OFFLINE=0 python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')" \
  && rm -rf /root/.cache/pip
 
 COPY config.example.yaml ./

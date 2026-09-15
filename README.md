@@ -515,7 +515,18 @@ Required env on Render: `RAGEVDA_LITE=1`, `RAGEVDA_ALLOW_FALLBACK=1`,
 Optional: `HF_TOKEN` (silences HF rate limits), `RAGEVDA_API_KEY` (auth on
 `/run`), `BRAVE_API_KEY` / `TAVILY_API_KEY` / `EXA_API_KEY` (live answer
 sampling), `AI_CRAWLER_LOG` (AI-bot analytics), `GSC_CREDENTIALS` /
-`GA4_PROPERTY` (attribution). The legacy `Dockerfile` pre-caches all models
+`GA4_PROPERTY` (attribution).
+
+> **URL not loading? Checklist:** (1) Render must actually use the LITE
+> image — either create the service as a **Blueprint** from `render.yaml`
+> (New → Blueprint → select repo), or in an existing service set
+> **Dockerfile Path** to `./Dockerfile.render` and redeploy; pushing the
+> files alone changes nothing for manually-created services. (2) Read the
+> **Events** tab: `Build failed` = see build logs (usually a pip/download
+> error); `Out of memory` = still on the FULL `Dockerfile` (2GB+ image can
+> never fit 512MB). (3) Free services **sleep when idle** — the first visit
+> after inactivity takes ~60s to wake; `/health` must return
+> `{"ok": true, ...}` once awake. The legacy `Dockerfile` pre-caches all models
 at build time, runs as non-root, binds `0.0.0.0:$PORT`, and serves the Flask
 UI via gunicorn (workers must stay 1: audits, scheduler and job cache live
 in-process).
