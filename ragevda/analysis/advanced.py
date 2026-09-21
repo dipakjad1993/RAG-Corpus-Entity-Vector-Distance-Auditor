@@ -212,6 +212,23 @@ def run_advanced(ctx, config, proximity_rows, citation_result,
         result["synthetic_queries"]["note"] = ("LEGACY: use advanced.fanout + "
             "prompt library forward tracking; synthetic kept for back-compat only.")
 
+    # 17. Answer-volatility + citation-decay (P0 credibility): mean±stdev over
+    # answer_repeats + week-over-week decay from drift. Fail-open, stdlib-only.
+    try:
+        from .volatility import volatility_report
+        _samples = {}
+        for d in (ctx.docs or []):
+            if getattr(d, "source_type", "") == "answer":
+                key = getattr(d, "url", "") or getattr(d, "title", "") or "answer"
+                _samples.setdefault(str(key), []).append(
+                    float(getattr(d, "topic_relevance", 0.0) or 0.0) or 0.5)
+        result["volatility"] = volatility_report(
+            _samples or None, result.get("drift"),
+            int(getattr(config, "answer_repeats", 5) or 5))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("volatility skipped: %s", exc)
+        result["volatility"] = {"overall": {"status": "UNKNOWN"}, "citation_decay": []}
+
     return result
 
 

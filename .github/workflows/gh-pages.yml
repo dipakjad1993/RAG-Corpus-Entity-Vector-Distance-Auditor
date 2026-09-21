@@ -1,0 +1,29 @@
+name: gh-pages sample
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/sample_dashboard/**"
+      - "docs/SAMPLE_DASHBOARD.md"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify sample exists
+        run: test -f docs/sample_dashboard/dashboard.html || echo "sample not yet published - see docs/SAMPLE_DASHBOARD.md"
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/sample_dashboard
+      - name: Deploy to Pages
+        uses: actions/deploy-pages@v4

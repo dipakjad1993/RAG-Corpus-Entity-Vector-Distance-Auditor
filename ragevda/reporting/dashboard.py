@@ -321,6 +321,135 @@ def _render_advanced(adv: Dict[str, Any], brand: str, cfg: Dict,
         {ch.get('chunk_overlap_tokens','?')}-token overlap before scoring, mirroring how real RAG
         retrievers embed individual windows rather than whole articles.</div></section>""")
 
+    # ---- P0 GEO-depth engines (v2.2.0): visibility / fan-out / E-E-A-T /
+    # entity-gain / reddit / media / multilingual / crawler / attribution ---
+    vis = adv.get("visibility", {}) or {}
+    if vis.get("table"):
+        vrows = ""
+        for r in vis["table"][:12]:
+            vrows += (
+                f"<tr><td>#{r.get('position','–')}</td><td>{_esc(r.get('entity',''))}</td>"
+                f"<td><b>{r.get('visibility',0)}</b></td>"
+                f"<td>{r.get('mentions',0)} / {r.get('citations_linked',0)} linked</td>"
+                f"<td>{r.get('mention_share_pct',0)}%</td></tr>"
+            )
+        parts.append(f"""
+        <section><h2>C-suite Visibility Score (auditable, Semrush-style)</h2>
+        <p class="muted">Brand <b>{vis.get('brand_visibility',0)}</b> (#{vis.get('brand_position','–')})
+        vs competitor median <b>{vis.get('competitor_median_visibility',0)}</b>
+        (Δ <b>{vis.get('delta_vs_median',0):+.1f}</b>). Mentions vs linked-citations split per entity.</p>
+        <table><thead><tr><th>Pos</th><th>Entity</th><th>Visibility 0-100</th>
+        <th>Mentions / linked</th><th>Share</th></tr></thead><tbody>{vrows}</tbody></table>
+        <div class="footer">{_esc(vis.get('method',''))}</div></section>""")
+
+    vol = adv.get("volatility", {}) or {}
+    if vol.get("overall") is not None:
+        ov = vol.get("overall", {}) or {}
+        drows = "".join(
+            f"<tr><td>{_esc(r.get('topic',''))}</td><td>{r.get('sov_delta',0):+.1f} pp</td>"
+            f"<td>{r.get('proximity_delta',0):+.3f}</td>"
+            f"<td>{r.get('trend_sov_per_run',0):+.2f}/run</td>"
+            f"<td>{'yes' if r.get('has_prior') else 'no baseline'}</td></tr>"
+            for r in (vol.get("citation_decay", []) or [])[:10]
+        )
+        parts.append(f"""
+        <section><h2>Answer Volatility &amp; Citation Decay (mean ± stdev)</h2>
+        <div class="kpis">
+          <div class="kpi"><div class="v">{_esc(ov.get('status','UNKNOWN'))}</div><div class="l">Volatility status</div></div>
+          <div class="kpi"><div class="v">{ov.get('mean_stdev',0)}</div><div class="l">Mean stdev</div></div>
+          <div class="kpi"><div class="v">{ov.get('prompts_with_repeats',0)}/{ov.get('prompts_tracked',0)}</div><div class="l">Prompts w/ repeats</div></div>
+          <div class="kpi"><div class="v">×{ov.get('answer_repeats',0)}</div><div class="l">Repeats / prompt</div></div>
+        </div>
+        <p class="muted">{_esc(ov.get('note','Single-sample runs are labelled, never smoothed. Set answer_harvester: multi + answer_repeats: 5-10 for real volatility.'))}</p>
+        {('<table><thead><tr><th>Topic</th><th>Δ SoV</th><th>Δ proximity</th><th>Trend</th><th>Prior</th></tr></thead><tbody>' + drows + '</tbody></table>') if drows else ''}
+        <div class="footer">{_esc(vol.get('method',''))}</div></section>""")
+
+    ee = adv.get("eeat", {}) or {}
+    if ee.get("rows"):
+        erows = "".join(
+            f"<tr class='{'row-bad' if str(r.get('verdict','')).upper()=='CRITICAL' else ''}'><td class='src'>{_esc(str(r.get('url',''))[:60])}</td>"
+            f"<td>{r.get('score',0)}</td><td>{_esc(str(r.get('verdict','')))}</td></tr>"
+            for r in (ee.get("rows", []) or [])[:10]
+        )
+        parts.append(f"""
+        <section><h2>E-E-A-T Gate (avg {ee.get('avg_score','–')}, {ee.get('critical_count',0)} CRITICAL)</h2>
+        <table><thead><tr><th>URL</th><th>Score</th><th>Verdict</th></tr></thead><tbody>{erows}</tbody></table>
+        <div class="footer">Scores &lt;50 are CRITICAL — add author identity, first-hand experience, citations.</div></section>""")
+
+    eg = adv.get("entity_gain", {}) or {}
+    if eg.get("rows"):
+        grows = "".join(
+            f"<tr><td class='src'>{_esc(str(r.get('url',''))[:60])}</td>"
+            f"<td>{r.get('entity_count',0)}</td><td>{r.get('score',0)}</td></tr>"
+            for r in (eg.get("rows", []) or [])[:10]
+        )
+        parts.append(f"""
+        <section><h2>Entity Density + Information Gain (avg {eg.get('avg_score','–')})</h2>
+        <p class="muted">Cited passages average ~20.6% entity density vs ~7% web baseline. 15+ entities/page + stats/quotes win.</p>
+        <table><thead><tr><th>URL</th><th>Entities</th><th>Score</th></tr></thead><tbody>{grows}</tbody></table></section>""")
+
+    rt = adv.get("reddit_topics", {}) or {}
+    if rt.get("subreddits"):
+        rrows = "".join(
+            f"<tr><td>r/{_esc(s.get('subreddit',''))}</td><td>{s.get('threads',0)}</td>"
+            f"<td>{s.get('brand_mentions',0)}</td><td>{_esc(str(s.get('action',''))[:80])}</td></tr>"
+            for s in (rt.get("subreddits", []) or [])[:12]
+        )
+        parts.append(f"""
+        <section><h2>Subreddit Topic Map (Reddit is ~22% of AI citations)</h2>
+        <table><thead><tr><th>Subreddit</th><th>Threads</th><th>Brand mentions</th><th>Outreach action</th></tr></thead><tbody>{rrows}</tbody></table>
+        <div class="footer">Perplexity cites Reddit in ~46.7% of responses, AIO ~21%, ChatGPT ~5%. Contribute genuine answers from real team members — never promo-spam.</div></section>""")
+
+    med = adv.get("media", {}) or {}
+    if med.get("rows") or med.get("summary"):
+        mrows = "".join(
+            f"<tr><td class='src'>{_esc(str(r.get('url',''))[:60])}</td>"
+            f"<td>{_esc(str(r.get('check','')))}</td><td>{_esc(str(r.get('status','')))}</td></tr>"
+            for r in (med.get("rows", []) or [])[:10]
+        )
+        parts.append(f"""
+        <section><h2>Image / Video / Merchant / GBP Checks</h2>
+        <p class="muted">{_esc(str(med.get('summary',''))[:300])}</p>
+        {('<table><thead><tr><th>URL</th><th>Check</th><th>Status</th></tr></thead><tbody>' + mrows + '</tbody></table>') if mrows else ''}
+        <div class="footer">YouTube supplies ~23% of AI citations; accurate Merchant Center + GBP create visibility beyond text links.</div></section>""")
+
+    ml = adv.get("multilingual", {}) or {}
+    if ml.get("lang_counts"):
+        lrows = "".join(
+            f"<tr><td>{_esc(k)}</td><td>{v}</td></tr>"
+            for k, v in (ml.get("lang_counts", {}) or {}).items()
+        )
+        gaps = "<br>".join(_esc(g) for g in (ml.get("gaps", []) or [])[:5])
+        parts.append(f"""
+        <section><h2>Language + Geo-Variant Report</h2>
+        <table><thead><tr><th>Language</th><th>Docs</th></tr></thead><tbody>{lrows}</tbody></table>
+        {('<p class="muted">' + gaps + '</p>') if gaps else ''}
+        <div class="footer">EU/DE buyers need multi-geo proof (Peec covers 115+ langs). Track geo_variants per prompt.</div></section>""")
+
+    craw = adv.get("crawler", {}) or {}
+    if craw.get("configured"):
+        brows = "".join(
+            f"<tr><td>{_esc(k)}</td><td>{v}</td></tr>"
+            for k, v in (craw.get("per_bot", {}) or {}).items()
+        )
+        parts.append(f"""
+        <section><h2>AI-Crawler Analytics (Scrunch's moat, open-source)</h2>
+        <p class="muted">Total AI bot hits: <b>{craw.get('total_ai_hits',0)}</b>. Point AI_CRAWLER_LOG at /var/log/nginx/access.log.</p>
+        <table><thead><tr><th>Bot</th><th>Hits</th></tr></thead><tbody>{brows}</tbody></table>
+        <div class="footer">{_esc(craw.get('method',''))}</div></section>""")
+
+    for _key, _title in (("attribution_gsc", "GSC Generative-AI Impressions"),
+                         ("attribution_ga4", "GA4 LLM-Referral Split")):
+        at = adv.get(_key, {}) or {}
+        if at and at.get("configured") is False:
+            parts.append(f"""
+            <section><h2>{_title} — not configured</h2>
+            <p class="muted">{_esc(at.get('note', at.get('error', 'Set credentials to wire real attribution; never synthesised.')))}</p></section>""")
+        elif at and at.get("configured"):
+            parts.append(f"""
+            <section><h2>{_title} — wired</h2>
+            <p class="muted">Real API pull configured. See report.json advanced.{_key} for rows.</p></section>""")
+
     # ---- LLM rationale ----------------------------------------------
     llm = adv.get("llm", {}) or {}
     if not llm.get("available"):
@@ -552,6 +681,27 @@ def render_dashboard(data: Dict[str, Any]) -> str:
         f"trustworthy, not that the tool failed.</div></div>"
     )
 
+    # --- TL;DR executive verdict (P0 screenshot card) ------------------
+    try:
+        from .verdict import compute_exec_verdict as _verdict
+        _vd = _verdict(data, brand)
+    except Exception:
+        _vd = {"verdict": "Report ready", "tone": "warn", "sentence": "",
+               "visibility": 0, "position": "–", "mentions": 0,
+               "citations_linked": 0, "delta_vs_median": 0,
+               "invisibility_pct": 0, "sov_pct": 0}
+    _tone_cls = {"good": "good", "warn": "warn",
+                 "critical": "critical", "info": "info"}.get(_vd.get("tone", "warn"), "warn")
+    verdict_banner = (
+        f"<div class='issue {_tone_cls}' style='margin:18px 0 0;border-left-width:6px;'>"
+        f"<div class='issue-title'>TL;DR — {_esc(_vd.get('verdict',''))} "
+        f"(Visibility {_vd.get('visibility',0)} · #{_vd.get('position','–')} · "
+        f"Δ {_vd.get('delta_vs_median',0):+.1f} vs median)</div>"
+        f"<div class='issue-detail'>{_esc(_vd.get('sentence',''))}<br>"
+        f"Mentions {_vd.get('mentions',0)} ({_vd.get('citations_linked',0)} linked) · "
+        f"Invisible {_vd.get('invisibility_pct',0)}% · SoV {_vd.get('sov_pct',0)}%.</div></div>"
+    )
+
     html_doc = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -637,6 +787,7 @@ summary{{cursor:pointer; color:var(--m3-primary); font-size:13px; padding:8px 0;
 </div>
 {hw_banner}
 {verify_banner}
+{verdict_banner}
 
 <div class="m3-grid" id="kpis">
   <div class="m3-kpi"><div class="v warn">{inv_index}%</div><div class="l">RAG Invisibility Index</div></div>
