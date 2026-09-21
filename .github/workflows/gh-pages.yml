@@ -1,11 +1,12 @@
 name: gh-pages sample
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "docs/sample_dashboard/**"
-      - "docs/SAMPLE_DASHBOARD.md"
+  # Manual-only until the owner enables Pages once in
+  # Settings -> Pages -> "Build and deployment: GitHub Actions".
+  # (The auto-enable API needs admin scope the GITHUB_TOKEN lacks, so a
+  # push-triggered job would red-X every commit. Trigger manually after
+  # enabling; then switch back to push on docs/sample_dashboard/**.)
+  workflow_dispatch:
 
 permissions:
   contents: read
