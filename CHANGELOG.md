@@ -2,6 +2,38 @@
 
 All notable changes to RAG-EVDA. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2.3.0] — 2026-09-21 — Razorfish-review release (competitive + packaging)
+
+### Added
+- TL;DR Executive Verdict card on every dashboard (`reporting/verdict.py`,
+  `docs/EXEC_VERDICT.md`): Visibility 0-100, Position, Mentions vs linked,
+  delta vs competitor median + one-sentence CMO summary.
+- Answer-volatility + citation-decay engine (`analysis/volatility.py`,
+  `docs/VOLATILITY.md`): per-prompt mean±stdev over `answer_repeats`,
+  STABLE/WATCH/VOLATILE ladder, week-over-week SoV decay from drift history.
+  Single-sample runs labelled UNKNOWN, never smoothed.
+- Full P0-engine dashboard coverage: visibility, fan-out, E-E-A-T gate,
+  entity-gain, reddit topics, media, multilingual, crawler, GSC/GA4
+  attribution (all fail-open, all from real report evidence).
+- Real robots.txt enforcement helper (`harvester/robots.py`, fail-open,
+  LRU-cached) + EVAL v2 hand-label harness (`eval/v2_protocol.py`,
+  `labels_v2.sample.json`, `docs/EVAL_V2.md`, 50-doc protocol).
+- Docs split for the 1,324-line README: slim 81-line README + full reference
+  preserved at `docs/GUIDE_FULL.md`; new guides for sample/tour/volatility/
+  verdict/feeds/crawler/attribution/privacy/eval-v2/publishing; FastAPI-first
+  `SERVING.md`; global nuance (US/EU/IN-BR) in `SCOPE_2026.md`.
+- Publish path: `tools/publish_sample.py` + `gh-pages.yml` (static sample
+  dashboard) + `publish.yml` (PyPI + GHCR on release); `docs/PUBLISHING.md`.
+- Lock-in tests: `tests/test_razorfish_p0.py` (11 tests) pins nomic FULL /
+  MiniLM LITE-only, hybrid+reranker, multi harvesters, UGC core/TikTok
+  opt-in, require_real_models, 6 intents, 10-engine matrix, llms off.
+
+### Changed
+- README slimmed 1324 → 81 lines: 30-sec demo, Guardian proof table,
+  SaaS head-to-head, 5-file bundle contract (legacy CSVs under `_legacy/`),
+  llms.txt de-hyped to P2 hygiene per Google May-2026.
+- Suite: 70 passed, 9 skipped (was 59 passed).
+
 ## [2.2.0] — 2026-09-15 — Enterprise GEO-depth release
 
 ### Fixed

@@ -49,4 +49,4 @@ def test_orchestrator_uses_real_cleaner_symbol():
 def test_version_matches_release():
     from ragevda import __version__
     from ragevda.version import __version__ as v2
-    assert __version__ == v2 == "2.2.0"
+    assert __version__ == v2 == "2.3.0"
