@@ -21,7 +21,7 @@ jobs:
       - name: Verify sample exists
         run: test -f docs/sample_dashboard/dashboard.html || echo "sample not yet published - see docs/SAMPLE_DASHBOARD.md"
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
         with:
           enablement: true
       - name: Upload artifact
